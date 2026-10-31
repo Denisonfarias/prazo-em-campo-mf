@@ -33,6 +33,7 @@ import {
 import {
   buildMessage,
   formatClock,
+  whatsappLink,
   formatPhone,
   formatPrazo,
   formatRemaining,
@@ -264,6 +265,13 @@ export function Dashboard() {
   const whatsappReady =
     data?.settings.activeProvider === "meta" || data?.settings.activeProvider === "webhook";
 
+  function previewMessage(service: Service) {
+    return (
+      data?.alerts.find((alert) => alert.key === `${service.codigoTdc}|${service.prazoIso}`)
+        ?.message || (now ? buildMessage(service, now) : "")
+    );
+  }
+
   return (
     <div
       className="min-h-full"
@@ -289,8 +297,9 @@ export function Dashboard() {
               Prazo em Campo
             </h1>
             <p className="mt-1 max-w-xl text-sm text-primary-foreground/85">
-              Os serviços entram pelo Excel ou CSV. A cor mostra quem está mais perto de vencer, e
-              na última hora o WhatsApp avisa o responsável e você.
+              Os serviços entram pelo Excel ou CSV. A cor mostra quem está mais perto de vencer.
+              O botão abre o WhatsApp do responsável com a mensagem pronta, e você só confirma o
+              envio.
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -469,24 +478,26 @@ export function Dashboard() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Disparo automático</CardTitle>
+              <CardTitle>Aviso no WhatsApp</CardTitle>
               <CardDescription>
-                A varredura roda a cada 30 segundos enquanto este servidor estiver ligado.
+                Em cada serviço, Avisar no WhatsApp abre a conversa do responsável com cliente,
+                endereço, prazo e rota já escritos. Você só toca em enviar, pelo celular ou pelo
+                WhatsApp Web.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-2 text-sm">
-              <p>
-                WhatsApp:{" "}
-                <strong>
-                  {whatsappReady
-                    ? data?.settings.activeProvider === "meta"
+              {whatsappReady ? (
+                <p>
+                  Envio automático:{" "}
+                  <strong>
+                    {data?.settings.activeProvider === "meta"
                       ? "Cloud API conectada"
-                      : "webhook conectado"
-                    : "ainda não configurado"}
-                </strong>
-              </p>
+                      : "webhook conectado"}
+                  </strong>
+                </p>
+              ) : null}
               <p>
-                Última varredura:{" "}
+                Última atualização:{" "}
                 <strong>
                   {data?.lastCheckAt ? formatClock(new Date(data.lastCheckAt)) : "aguardando"}
                 </strong>
@@ -504,10 +515,9 @@ export function Dashboard() {
               ) : (
                 <p className="text-muted-foreground">Nenhuma planilha de serviços anexada.</p>
               )}
-              {!whatsappReady && services.length ? (
+              {services.length && counts.semTelefone ? (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-950">
-                  Os avisos da última hora estão sendo preparados, mas ainda não saem. Abra
-                  WhatsApp e informe a API.
+                  Sem o telefone do responsável na planilha, o WhatsApp não tem para quem abrir.
                 </p>
               ) : null}
             </CardContent>
@@ -628,11 +638,21 @@ export function Dashboard() {
                           </a>
                         </TableCell>
                         <TableCell className="whitespace-normal">
-                          <AlertButton
-                            alert={alert}
-                            urgency={urgency}
-                            onClick={() => setPreview(service)}
-                          />
+                          <div className="flex flex-col items-start gap-1.5">
+                            <WhatsAppSend
+                              phone={agent?.telefone ?? null}
+                              message={alert?.message || (now ? buildMessage(service, now) : "")}
+                              urgent={urgency === "critico"}
+                            />
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => setPreview(service)}
+                            >
+                              Ver texto
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -666,11 +686,14 @@ export function Dashboard() {
                       <MapPin data-icon="inline-start" />
                       Abrir rota
                     </a>
-                    <AlertButton
-                      alert={alert}
-                      urgency={urgency}
-                      onClick={() => setPreview(service)}
+                    <WhatsAppSend
+                      phone={agent?.telefone ?? null}
+                      message={alert?.message || (now ? buildMessage(service, now) : "")}
+                      urgent={urgency === "critico"}
                     />
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setPreview(service)}>
+                      Ver texto
+                    </Button>
                   </div>
                 </article>
               ))}
@@ -682,8 +705,8 @@ export function Dashboard() {
           <h2 className="font-heading text-2xl">Avisos da última hora</h2>
           {!data?.alerts.length ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              Nenhum aviso ainda. Quando faltar uma hora para um prazo, a mensagem aparece aqui e
-              segue para o WhatsApp.
+              Quando faltar uma hora, o serviço fica em vermelho. Use Avisar no WhatsApp na linha
+              dele para abrir a mensagem pronta.
             </p>
           ) : (
             <div className="mt-3 grid gap-3">
@@ -738,15 +761,20 @@ export function Dashboard() {
           <DialogHeader>
             <DialogTitle>Mensagem do TdC {preview?.codigoTdc}</DialogTitle>
             <DialogDescription>
-              É este texto que segue no WhatsApp, com o endereço, o cliente e a rota.
+              Este texto abre no WhatsApp. Confira e toque em enviar.
             </DialogDescription>
           </DialogHeader>
           {preview ? (
-            <pre className="overflow-x-auto rounded-lg bg-muted p-3 font-sans text-sm whitespace-pre-wrap">
-              {data?.alerts.find(
-                (alert) => alert.key === `${preview.codigoTdc}|${preview.prazoIso}`,
-              )?.message || buildMessage(preview, now)}
-            </pre>
+            <>
+              <pre className="overflow-x-auto rounded-lg bg-muted p-3 font-sans text-sm whitespace-pre-wrap">
+                {previewMessage(preview)}
+              </pre>
+              <WhatsAppSend
+                phone={matchAgent(preview.chefe, phones)?.telefone ?? null}
+                message={previewMessage(preview)}
+                urgent
+              />
+            </>
           ) : null}
         </DialogContent>
       </Dialog>
@@ -800,25 +828,31 @@ function PrazoChip({
   );
 }
 
-function AlertButton({
-  alert,
-  urgency,
-  onClick,
+function WhatsAppSend({
+  phone,
+  message,
+  urgent,
 }: {
-  alert: Alert | undefined;
-  urgency: Urgency;
-  onClick: () => void;
+  phone: string | null;
+  message: string;
+  urgent: boolean;
 }) {
-  const label = alert
-    ? ALERT_LABEL[alert.status]
-    : urgency === "vencido"
-      ? "Venceu sem aviso"
-      : urgency === "critico"
-        ? "Disparando"
-        : "Ver mensagem";
+  if (!phone) {
+    return (
+      <Button type="button" size="sm" variant="outline" disabled>
+        Sem telefone
+      </Button>
+    );
+  }
   return (
-    <Button type="button" size="sm" variant="outline" onClick={onClick}>
-      {label}
-    </Button>
+    <a
+      className={buttonVariants({ variant: urgent ? "default" : "outline", size: "sm" })}
+      href={whatsappLink(phone, message)}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <MessageCircle data-icon="inline-start" />
+      Avisar no WhatsApp
+    </a>
   );
 }

@@ -213,6 +213,11 @@ export function buildMessage(service: Service, now: number): string {
   ].join("\n");
 }
 
+export function whatsappLink(phone: string, message: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
 export function matchAgent(chefe: string, phones: PhoneEntry[]): PhoneEntry | null {
   const target = normalizeName(chefe);
   if (!target) return null;

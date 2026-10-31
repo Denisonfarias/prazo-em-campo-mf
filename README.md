@@ -37,22 +37,24 @@ https://docs.google.com/spreadsheets/d/1hbC22pvcUOSiu8e7zhu0e0H852RnOEt8sD6be-YG
 
 Colunas: `Nome`, `Telefone`, `mais_informacoes`.
 
-- No seu número, escreva `meu numero` em `mais_informacoes`. Esse telefone recebe todos os avisos.
-- Para cada responsável, o `Nome` precisa ser o mesmo da coluna Chefe/Responsável de Equipe do arquivo de serviços. Acentos e maiúsculas não importam.
+- Para cada responsável, o `Nome` precisa ser o mesmo da coluna Chefe/Responsável de Equipe do arquivo de serviços. Acentos e maiúsculas não importam. É nesse telefone que o botão abre a conversa.
+- A linha com `meu numero` em `mais_informacoes` identifica o seu telefone no painel.
 
 A planilha precisa estar compartilhada como qualquer pessoa com o link pode ver.
 
 ## WhatsApp
 
-Sem uma API configurada, o sistema prepara a mensagem e mostra no painel, mas não envia. Em **WhatsApp**, escolha uma opção:
+Em cada serviço, **Avisar no WhatsApp** abre o WhatsApp (celular ou WhatsApp Web) na conversa do responsável, com a mensagem já escrita. Você só confirma o envio. Não precisa de API nem de plano pago.
+
+A mensagem leva o aviso de prazo, o nome do cliente, o código do TdC, o responsável, o endereço, o prazo e o link da rota no Google Maps.
+
+O envio automático continua disponível, se um dia quiser ligar uma API. Em **WhatsApp** no topo da tela:
 
 - **Cloud API da Meta:** token de acesso e ID do número.
-- **Webhook:** URL que recebe `POST` com `{ "phone", "number", "message", "text" }`. Serve para Z-API (`.../send-text`), Evolution e n8n. Se a Z-API pedir Client-Token, cole esse token no campo.
+- **Webhook:** URL que recebe `POST` com `{ "phone", "number", "message", "text" }`. Serve para Z-API, Evolution e n8n.
 
-Também dá para definir as variáveis do arquivo `.env.example` em vez de usar o painel. Há um botão para mandar uma mensagem de teste só para o seu número.
-
-A mensagem leva o aviso de que falta cerca de uma hora, o nome do cliente, o código do TdC, o responsável, o endereço, o prazo e o link da rota no Google Maps.
+As mesmas credenciais podem ir nas variáveis do arquivo `.env.example`.
 
 ## Cores do prazo
 
-Vermelho escuro é prazo vencido. Vermelho é menos de 1 hora, que é quando o WhatsApp sai. Laranja é até 3 horas, âmbar até 8, verde-limão até 24 e verde depois disso.
+Vermelho escuro é prazo vencido. Vermelho é menos de 1 hora, a hora de abrir o WhatsApp e enviar. Laranja é até 3 horas, âmbar até 8, verde-limão até 24 e verde depois disso.

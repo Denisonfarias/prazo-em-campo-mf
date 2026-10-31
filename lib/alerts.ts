@@ -125,6 +125,9 @@ export async function dispatchDueAlerts(store: StoreData, now: number) {
   const config = effectiveWhatsapp(store.whatsapp);
   let sent = 0;
   let prepared = 0;
+  if (config.provider === "none") {
+    return { sent, prepared, services: store.services.length };
+  }
 
   for (const service of store.services) {
     if (!inAlertWindow(service.prazoIso, now)) continue;

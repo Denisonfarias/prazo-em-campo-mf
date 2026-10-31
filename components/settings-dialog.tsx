@@ -92,8 +92,8 @@ export function SettingsDialog({
         <DialogHeader>
           <DialogTitle>WhatsApp e o seu número</DialogTitle>
           <DialogDescription>
-            O aviso sai sozinho quando falta uma hora para o Prazo ANS legal. Ele vai para o
-            responsável da equipe e para o número marcado como &quot;meu numero&quot; na planilha.
+            O caminho normal é o botão Avisar no WhatsApp, em cada serviço. Esta tela só serve se
+            você quiser que uma API envie sozinha, além desse botão.
           </DialogDescription>
         </DialogHeader>
 

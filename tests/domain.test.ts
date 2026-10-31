@@ -9,6 +9,7 @@ import {
   formatPrazo,
   inAlertWindow,
   mapsLink,
+  whatsappLink,
   matchAgent,
   normalizePhone,
   parseDelimited,
@@ -111,6 +112,10 @@ test("lê csv de serviços separado por ponto e vírgula", () => {
   assert.match(message, /MARIA DA SILVA/);
   assert.match(message, /ST RIACHO SECO/);
   assert.match(message, /google\.com\/maps/);
+  const link = whatsappLink("5585999990000", message);
+  assert.ok(link.startsWith("https://wa.me/5585999990000?text="));
+  assert.match(decodeURIComponent(link), /MARIA DA SILVA/);
+  assert.match(decodeURIComponent(link), /ST RIACHO SECO/);
 });
 
 test("lê xlsx com as mesmas colunas", () => {
@@ -164,25 +169,13 @@ test("prepara o aviso uma vez na última hora e não dispara fora dela", async (
   assert.equal(store.alerts.length, 0);
 
   const due = await dispatchDueAlerts(store, Date.parse(PRAZO) - 40 * 60 * 1000);
-  assert.equal(due.prepared, 1);
-  assert.equal(store.alerts.length, 1);
-  assert.equal(store.alerts[0]?.status, "sem_whatsapp");
-  assert.equal(store.alerts[0]?.deliveries.length, 2);
-  assert.match(store.alerts[0]?.message ?? "", /Cliente Um/);
-  assert.match(store.alerts[0]?.message ?? "", /cerca de 40 minutos/);
-  assert.match(
-    buildMessage(service, Date.parse(PRAZO) + 5 * 60 * 1000),
-    /já encerrou/,
-  );
+  assert.equal(due.prepared, 0);
+  assert.equal(store.alerts.length, 0);
+  assert.match(buildMessage(service, Date.parse(PRAZO) - 40 * 60 * 1000), /cerca de 40 minutos/);
+  assert.match(buildMessage(service, Date.parse(PRAZO) + 5 * 60 * 1000), /já encerrou/);
 
-  const again = await dispatchDueAlerts(store, Date.parse(PRAZO) - 30 * 60 * 1000);
-  assert.equal(again.prepared, 1);
-  assert.equal(store.alerts.length, 1);
-
-  store.alerts.length = 0;
   const late = await dispatchDueAlerts(store, Date.parse(PRAZO) + 5 * 60 * 1000);
   assert.equal(late.prepared, 0);
-  assert.equal(store.alerts.length, 0);
 });
 
 test("detecta vírgula e ponto e vírgula no csv", () => {
