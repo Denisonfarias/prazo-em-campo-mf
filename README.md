@@ -54,6 +54,12 @@ Anexe um `.xlsx` ou `.csv` exportado do sistema. As colunas usadas são:
 
 Um arquivo novo atualiza a fila. Serviço marcado como **feito** continua feito, mesmo que o código saia do arquivo. Serviço em aberto que não está no arquivo novo sai da lista.
 
+## Arquivo de baixas
+
+**Anexar baixas** recebe o Excel grande, com as abas **TdC** e **Linhas TdC**. Da aba TdC saem o Código TdC e o Prazo ANS legal. Da aba Linhas TdC saem o TdC e a Data Fim, que é o momento em que o serviço foi baixado. Se o mesmo TdC tiver mais de uma Data Fim, vale a mais recente.
+
+Data Fim depois do Prazo ANS legal entra em **Baixados fora do prazo**. Data Fim até o prazo conta como dentro do prazo. O arquivo fica neste navegador e pode ter dezenas de megabytes.
+
 ## Feito
 
 **Feito** é a confirmação de que o responsável já realizou o serviço. Ele sai das contagens de em aberto, vencido e das horas que faltam. **Desfazer feito** devolve o serviço para em aberto. A lista inteira continua no filtro **Todos**.

@@ -44,6 +44,8 @@ import {
   urgencyOf,
 } from "@/lib/domain";
 import { SHEET_EDIT_URL } from "@/lib/config";
+import { loadFechamento, saveFechamento, type SavedFechamento } from "@/lib/fechamento-store";
+import { isFechamentoWorkbook, parseFechamento } from "@/lib/parse-fechamento";
 import { parseUpload } from "@/lib/parse-services";
 import { loadSavedServices, saveSavedServices } from "@/lib/saved-services";
 import type { Alert, PhoneEntry, Service, ServiceStatus, Urgency } from "@/lib/types";
@@ -73,6 +75,7 @@ type Filter =
   | "tresHoras"
   | "vencido"
   | "feito"
+  | "foraPrazo"
   | "semTelefone";
 
 const URGENCY: Record<
@@ -152,6 +155,9 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadingFechamento, setUploadingFechamento] = useState(false);
+  const [fechamento, setFechamento] = useState<SavedFechamento | null>(null);
+  const [foraPage, setForaPage] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("todos");
@@ -160,6 +166,7 @@ export function Dashboard() {
   const [settingsSession, setSettingsSession] = useState(0);
   const now = useNow();
   const fileRef = useRef<HTMLInputElement>(null);
+  const baixasRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/phones", { cache: "no-store" });
@@ -173,6 +180,7 @@ export function Dashboard() {
       throw new Error(payload.error || payload.phonesError || "Não foi possível carregar os telefones.");
     }
     const saved = loadSavedServices();
+    setFechamento(await loadFechamento());
     setData({
       now: new Date().toISOString(),
       fileName: saved.fileName,
@@ -229,9 +237,15 @@ export function Dashboard() {
   }
 
   async function upload(file: File) {
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    if (isFechamentoWorkbook(file.name, buffer)) {
+      await applyFechamento(file.name, buffer);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     setUploading(true);
     try {
-      const incoming = parseUpload(file.name, new Uint8Array(await file.arrayBuffer()));
+      const incoming = parseUpload(file.name, buffer);
       const previous = loadSavedServices();
       const uploadedAt = new Date().toISOString();
       const merged = mergeUpload(previous.services, incoming, uploadedAt);
@@ -251,6 +265,36 @@ export function Dashboard() {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  async function applyFechamento(fileName: string, buffer: Uint8Array) {
+    setUploadingFechamento(true);
+    toast.message("Lendo as abas TdC e Linhas TdC. Em um arquivo grande, isso pode levar um minuto.");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    try {
+      const parsed = parseFechamento(fileName, buffer);
+      const saved: SavedFechamento = {
+        ...parsed,
+        fileName,
+        uploadedAt: new Date().toISOString(),
+      };
+      await saveFechamento(saved);
+      setFechamento(saved);
+      setForaPage(0);
+      setFilter("foraPrazo");
+      toast.success(
+        `${parsed.fora} baixados fora do prazo. ${parsed.dentro} dentro do prazo.`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível ler o arquivo de baixas.");
+    } finally {
+      setUploadingFechamento(false);
+      if (baixasRef.current) baixasRef.current.value = "";
+    }
+  }
+
+  async function uploadFechamento(file: File) {
+    await applyFechamento(file.name, new Uint8Array(await file.arrayBuffer()));
   }
 
   function markServiceFeito(codigoTdc: string) {
@@ -307,6 +351,16 @@ export function Dashboard() {
       })
       .sort((a, b) => compareServices(a.service, b.service));
   }, [data?.alerts, filter, now, phones, query, services]);
+
+  const foraItens = useMemo(() => {
+    const itens = fechamento?.itens.filter((item) => item.fora) ?? [];
+    const term = query.trim().toLocaleLowerCase("pt-BR");
+    if (!term) return itens;
+    return itens.filter((item) => item.codigoTdc.toLocaleLowerCase("pt-BR").includes(term));
+  }, [fechamento, query]);
+  const foraPages = Math.max(1, Math.ceil(foraItens.length / 40));
+  const foraPageSafe = Math.min(foraPage, foraPages - 1);
+  const foraVisible = foraItens.slice(foraPageSafe * 40, foraPageSafe * 40 + 40);
 
   const counts = useMemo(() => {
     const tally = {
@@ -397,6 +451,16 @@ export function Dashboard() {
                 <Upload data-icon="inline-start" />
                 {uploading ? "Lendo arquivo..." : "Anexar planilha"}
               </label>
+              <label
+                htmlFor="baixas"
+                className={cn(
+                  buttonVariants({ variant: "secondary" }),
+                  uploadingFechamento && "pointer-events-none opacity-50",
+                )}
+              >
+                <Upload data-icon="inline-start" />
+                {uploadingFechamento ? "Lendo baixas..." : "Anexar baixas"}
+              </label>
               <Button
                 type="button"
                 variant="secondary"
@@ -425,6 +489,18 @@ export function Dashboard() {
           if (file) void upload(file);
         }}
       />
+      <input
+        id="baixas"
+        ref={baixasRef}
+        type="file"
+        accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="sr-only"
+        disabled={uploadingFechamento}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void uploadFechamento(file);
+        }}
+      />
 
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-5 sm:px-6">
         {dragging ? (
@@ -447,7 +523,7 @@ export function Dashboard() {
           </Card>
         ) : null}
 
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           <StatusCard
             label="Em aberto"
             hint="ainda na fila"
@@ -495,6 +571,21 @@ export function Dashboard() {
             tone="green"
             active={filter === "feito"}
             onClick={() => setFilter("feito")}
+          />
+          <StatusCard
+            label="Baixados fora do prazo"
+            hint={
+              fechamento
+                ? `${fechamento.dentro} dentro do prazo`
+                : "arquivo de baixas"
+            }
+            value={loading && !fechamento ? "…" : String(fechamento?.fora ?? 0)}
+            tone="purple"
+            active={filter === "foraPrazo"}
+            onClick={() => {
+              setForaPage(0);
+              setFilter("foraPrazo");
+            }}
           />
         </section>
 
@@ -633,6 +724,17 @@ export function Dashboard() {
               ) : (
                 <p className="text-muted-foreground">Nenhuma planilha de serviços anexada.</p>
               )}
+              {fechamento ? (
+                <p className="text-muted-foreground">
+                  Baixas: {fechamento.fileName}
+                  {` · ${formatClock(new Date(fechamento.uploadedAt))}`}
+                </p>
+              ) : (
+                <p className="text-muted-foreground">
+                  Nenhuma planilha de baixas anexada. Use Anexar baixas no Excel com as abas TdC e
+                  Linhas TdC.
+                </p>
+              )}
               {counts.aberto && counts.semTelefone ? (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-950">
                   Sem o telefone do responsável na planilha, o WhatsApp não tem para quem abrir.
@@ -672,6 +774,7 @@ export function Dashboard() {
               ["tresHoras", "Faltando 3 horas"],
               ["vencido", "Vencido"],
               ["feito", "Feito"],
+              ["foraPrazo", "Fora do prazo"],
               ["semTelefone", "Sem telefone"],
             ] as const
           ).map(([value, label]) => (
@@ -687,6 +790,17 @@ export function Dashboard() {
           ))}
         </div>
 
+        {filter === "foraPrazo" ? (
+          <FechamentoList
+            fechamento={fechamento}
+            itens={foraVisible}
+            total={foraItens.length}
+            page={foraPageSafe}
+            pageCount={foraPages}
+            onPage={setForaPage}
+          />
+        ) : (
+          <>
         {services.length ? (
           <p className="text-sm text-muted-foreground">
             {rows.length} de {services.length}{" "}
@@ -848,6 +962,8 @@ export function Dashboard() {
             </div>
           </>
         )}
+          </>
+        )}
 
         <section className="pb-8">
           <h2 className="font-heading text-2xl">Avisos da última hora</h2>
@@ -957,7 +1073,7 @@ function StatusCard({
   label: string;
   hint: string;
   value: string;
-  tone?: "blue" | "red" | "orange" | "yellow" | "black" | "green";
+  tone?: "blue" | "red" | "orange" | "yellow" | "black" | "green" | "purple";
   active?: boolean;
   onClick?: () => void;
 }) {
@@ -974,7 +1090,9 @@ function StatusCard({
               ? "text-black"
               : tone === "green"
                 ? "text-green-700"
-                : "text-foreground";
+                : tone === "purple"
+                  ? "text-purple-700"
+                  : "text-foreground";
   const barClass =
     tone === "blue"
       ? "bg-blue-600"
@@ -988,7 +1106,9 @@ function StatusCard({
               ? "bg-black"
               : tone === "green"
                 ? "bg-green-600"
-                : "bg-transparent";
+                : tone === "purple"
+                  ? "bg-purple-600"
+                  : "bg-transparent";
   return (
     <button type="button" onClick={onClick} className="text-left">
       <Card size="sm" className={cn("h-full w-full", active && "ring-2 ring-primary")}>
@@ -1000,6 +1120,102 @@ function StatusCard({
         </CardContent>
       </Card>
     </button>
+  );
+}
+
+function FechamentoList({
+  fechamento,
+  itens,
+  total,
+  page,
+  pageCount,
+  onPage,
+}: {
+  fechamento: SavedFechamento | null;
+  itens: SavedFechamento["itens"];
+  total: number;
+  page: number;
+  pageCount: number;
+  onPage: (page: number) => void;
+}) {
+  if (!fechamento) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Nenhuma baixa anexada</CardTitle>
+          <CardDescription>
+            Use Anexar baixas e escolha o Excel com a aba TdC (Código TdC e Prazo ANS Legal) e a
+            aba Linhas TdC (TdC e Data Fim).
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+  if (!total) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Nenhum serviço baixado fora do prazo</CardTitle>
+          <CardDescription>
+            {fechamento.dentro} baixados dentro do prazo
+            {fechamento.semDataFim ? ` · ${fechamento.semDataFim} sem Data Fim` : ""}.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+  return (
+    <Card className="py-0">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Código TdC</TableHead>
+            <TableHead>Prazo ANS legal</TableHead>
+            <TableHead>Data fim</TableHead>
+            <TableHead>Situação</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {itens.map((item) => (
+            <TableRow key={item.codigoTdc} className="bg-purple-50 hover:bg-purple-100">
+              <TableCell className="font-medium tabular-nums">{item.codigoTdc}</TableCell>
+              <TableCell>{formatPrazo(item.prazoIso)}</TableCell>
+              <TableCell>{formatPrazo(item.fimIso)}</TableCell>
+              <TableCell>
+                <span className="inline-flex h-5 items-center rounded-full bg-purple-700 px-2 text-xs font-medium text-white">
+                  Fora do prazo
+                </span>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+        <p className="text-muted-foreground">
+          {total} fora do prazo · {fechamento.dentro} dentro do prazo
+          {fechamento.semDataFim ? ` · ${fechamento.semDataFim} sem Data Fim` : ""}
+        </p>
+        {pageCount > 1 ? (
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={page === 0} onClick={() => onPage(page - 1)}>
+              Anterior
+            </Button>
+            <span className="tabular-nums">
+              {page + 1} / {pageCount}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={page + 1 >= pageCount}
+              onClick={() => onPage(page + 1)}
+            >
+              Próxima
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </Card>
   );
 }
 
