@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import * as XLSX from "xlsx";
 import {
   Check,
+  Download,
   ExternalLink,
   MapPin,
   MessageCircle,
@@ -1199,8 +1201,13 @@ function FechamentoList({
           {total} fora do prazo · {fechamento.dentro} dentro do prazo
           {fechamento.semDataFim ? ` · ${fechamento.semDataFim} sem Data Fim` : ""}
         </p>
-        {pageCount > 1 ? (
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => downloadAnalitico(fechamento)}>
+            <Download data-icon="inline-start" />
+            Baixar analítico Excel
+          </Button>
+          {pageCount > 1 ? (
+            <>
             <Button type="button" size="sm" variant="outline" disabled={page === 0} onClick={() => onPage(page - 1)}>
               Anterior
             </Button>
@@ -1216,11 +1223,48 @@ function FechamentoList({
             >
               Próxima
             </Button>
-          </div>
-        ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
     </Card>
   );
+}
+
+function downloadAnalitico(fechamento: SavedFechamento) {
+  const rows = fechamento.itens.map((item) => ({
+    "Código TdC": item.codigoTdc,
+    "Responsável": item.chefe || "Não informado",
+    "Prazo ANS Legal": formatPrazo(item.prazoIso),
+    "Data Fim": formatPrazo(item.fimIso),
+    "Situação": item.fora ? "Fora do prazo" : "Dentro do prazo",
+  }));
+  const sheet = XLSX.utils.json_to_sheet(rows);
+  sheet["!cols"] = [{ wch: 14 }, { wch: 42 }, { wch: 20 }, { wch: 20 }, { wch: 20 }];
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, "Analítico");
+  const content = XLSX.write(book, { type: "array", bookType: "xlsx" });
+  const url = URL.createObjectURL(
+    new Blob([content], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `analitico_baixas_${dateForFilename()}.xlsx`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function dateForFilename() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .replace(/\//g, "-");
 }
 
 function StatusBadge({ service }: { service: Service }) {

@@ -73,7 +73,7 @@ export function parseFechamento(filename: string, buffer: Uint8Array): Fechament
       codigoTdc,
       prazoIso: prazo.prazoIso,
       fimIso: fim.fimIso,
-      chefe: fim.chefe || prazo.chefe,
+      chefe: prazo.chefe || fim.chefe,
       fora: late,
     });
   }

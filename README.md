@@ -56,9 +56,9 @@ Um arquivo novo atualiza a fila. Serviço marcado como **feito** continua feito,
 
 ## Arquivo de baixas
 
-**Anexar baixas** recebe o Excel grande, com as abas **TdC** e **Linhas TdC**. Da aba TdC saem o Código TdC e o Prazo ANS legal. Da aba Linhas TdC saem o TdC, a Data Fim e o Chefe/Responsável de Equipe. A Data Fim é o momento em que o serviço foi baixado. Se o mesmo TdC tiver mais de uma Data Fim, vale a mais recente.
+**Anexar baixas** recebe o Excel grande, com as abas **TdC** e **Linhas TdC**. Da aba TdC saem o Código TdC, o Prazo ANS legal e o Chefe/Responsável de Equipe. Da aba Linhas TdC saem o TdC e a Data Fim, que é o momento em que o serviço foi baixado. Se o mesmo TdC tiver mais de uma Data Fim, vale a mais recente.
 
-Data Fim depois do Prazo ANS legal entra em **Baixados fora do prazo**. Data Fim até o prazo conta como dentro do prazo. O arquivo fica neste navegador e pode ter dezenas de megabytes.
+Data Fim depois do Prazo ANS legal entra em **Baixados fora do prazo**. Data Fim até o prazo conta como dentro do prazo. O botão **Baixar analítico Excel** exporta todos os serviços baixados, com responsável, prazo, data fim e situação. O arquivo fica neste navegador e pode ter dezenas de megabytes.
 
 ## Feito
 

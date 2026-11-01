@@ -7,11 +7,11 @@ import { parseFechamento } from "@/lib/parse-fechamento";
 
 function workbook(): Uint8Array {
   const tdc = XLSX.utils.aoa_to_sheet([
-    ["Código TdC", "Prazo ANS Legal", "Nome e Sobrenome Cliente"],
-    ["100", "02/10/2026 12:00", "Ana"],
-    ["200", "02/10/2026 18:00", "Bruno"],
-    ["300", "03/10/2026 10:00", "Carla"],
-    ["400", "04/10/2026 09:00", "Davi"],
+    ["Código TdC", "Prazo ANS Legal", "Chefe/Responsável de Equipe", "Nome e Sobrenome Cliente"],
+    ["100", "02/10/2026 12:00", "Chefe Ana", "Ana"],
+    ["200", "02/10/2026 18:00", "Chefe Bruno", "Bruno"],
+    ["300", "03/10/2026 10:00", "Chefe Carla", "Carla"],
+    ["400", "04/10/2026 09:00", "Chefe Davi", "Davi"],
   ]);
   const linhas = XLSX.utils.aoa_to_sheet([
     ["Chefe/Responsável de Equipe", "TdC", "Data Inicio", "Data Fim"],
@@ -35,9 +35,9 @@ test("cruza Data Fim com Prazo ANS Legal e usa a baixa mais recente", () => {
   const late = result.itens.find((item) => item.codigoTdc === "100");
   const onTime = result.itens.find((item) => item.codigoTdc === "200");
   assert.equal(late?.fora, true);
-  assert.equal(late?.chefe, "Equipe Z");
+  assert.equal(late?.chefe, "Chefe Ana");
   assert.equal(onTime?.fora, false);
-  assert.equal(onTime?.chefe, "Equipe B");
+  assert.equal(onTime?.chefe, "Chefe Bruno");
   assert.equal(
     result.itens.some((item) => item.codigoTdc === "300" || item.codigoTdc === "999"),
     false,
