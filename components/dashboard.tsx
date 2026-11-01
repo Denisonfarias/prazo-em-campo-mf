@@ -451,7 +451,7 @@ export function Dashboard() {
                 )}
               >
                 <Upload data-icon="inline-start" />
-                {uploading ? "Lendo arquivo..." : "Anexar planilha"}
+                {uploading ? "Lendo arquivo..." : "Anexar serviços"}
               </label>
               <label
                 htmlFor="baixas"
