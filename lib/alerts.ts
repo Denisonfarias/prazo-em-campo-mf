@@ -168,19 +168,15 @@ export async function dispatchDueAlerts(store: StoreData, now: number) {
       const previous = alert.deliveries.find((item) => item.phone === recipient.phone);
       if (previous?.status === "enviado") continue;
 
-      let status: Delivery["status"] = "sem_whatsapp";
+      let status: Delivery["status"];
       let error: string | undefined;
-      if (config.provider === "none") {
-        error = "WhatsApp não configurado";
+      const result = await sendWhatsApp(config, recipient.phone, message);
+      if (result.ok) {
+        status = "enviado";
+        sent += 1;
       } else {
-        const result = await sendWhatsApp(config, recipient.phone, message);
-        if (result.ok) {
-          status = "enviado";
-          sent += 1;
-        } else {
-          status = "falhou";
-          error = result.error;
-        }
+        status = "falhou";
+        error = result.error;
       }
 
       const delivery: Delivery = {
