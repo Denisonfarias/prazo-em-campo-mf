@@ -1,3 +1,5 @@
+export type ServiceStatus = "aberto" | "feito" | "concluido";
+
 export type Service = {
   id: string;
   codigoTdc: string;
@@ -10,6 +12,10 @@ export type Service = {
   municipio: string;
   estadoTdc: string;
   equipe: string;
+  status?: ServiceStatus;
+  feitoEm?: string | null;
+  concluidoEm?: string | null;
+  noArquivoAtual?: boolean;
 };
 
 export type PhonePapel = "responsavel" | "agente";

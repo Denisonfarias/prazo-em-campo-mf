@@ -1,6 +1,6 @@
 # Prazo em Campo
 
-Acompanhamento dos serviços de campo. Você anexa o Excel ou o CSV, o painel colore o **Prazo ANS legal** conforme a hora atual e o botão abre o WhatsApp do responsável com a mensagem pronta.
+Acompanhamento dos serviços de campo. Você anexa o Excel ou o CSV, a lista mostra cada serviço e o painel colore o **Prazo ANS legal** do que ainda está em aberto. O botão abre o WhatsApp do responsável com a mensagem pronta.
 
 A lista de serviços fica salva neste navegador. Os telefones são lidos da planilha do Google.
 
@@ -38,7 +38,16 @@ Anexe um `.xlsx` ou `.csv` exportado do sistema. As colunas usadas são:
 - Nome e Sobrenome Cliente
 - Latitude e Longitude, quando existirem, para o link da rota
 
-Um arquivo novo substitui a lista anterior. O mesmo serviço não recebe o aviso duas vezes.
+Um arquivo novo atualiza a fila. Serviço marcado como **feito** que ainda aparece no arquivo continua feito. Se o código não vier mais, ele passa para **concluído**. Serviço em aberto que não está no arquivo novo sai da lista.
+
+## Feito e concluído
+
+O painel separa duas confirmações:
+
+1. **Feito** — você marcou depois que o responsável respondeu que o serviço já foi feito. Ele sai das contagens de em aberto, vencidos e menos de 1 hora.
+2. **Concluído** — um arquivo seguinte não trouxe mais aquele Código TdC, então o sistema já atualizou.
+
+**Desfazer feito** devolve o serviço para em aberto, enquanto ele ainda estiver no arquivo. A lista inteira continua disponível no filtro **Todos**.
 
 ## Telefones
 

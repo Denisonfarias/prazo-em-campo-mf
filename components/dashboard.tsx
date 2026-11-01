@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
+  Check,
   ExternalLink,
   MapPin,
   MessageCircle,
   RefreshCw,
+  Undo2,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,8 +46,9 @@ import {
 import { SHEET_EDIT_URL } from "@/lib/config";
 import { parseUpload } from "@/lib/parse-services";
 import { loadSavedServices, saveSavedServices } from "@/lib/saved-services";
-import type { Alert, PhoneEntry, Service, Urgency } from "@/lib/types";
+import type { Alert, PhoneEntry, Service, ServiceStatus, Urgency } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { isOpenWork, markFeito, mergeUpload, serviceStatus, undoFeito } from "@/lib/workflow";
 
 type StatePayload = {
   now: string;
@@ -62,7 +65,15 @@ type StatePayload = {
   settings: SettingsView;
 };
 
-type Filter = "todos" | "vencido" | "critico" | "ate8h" | "semTelefone";
+type Filter =
+  | "todos"
+  | "aberto"
+  | "feito"
+  | "concluido"
+  | "vencido"
+  | "critico"
+  | "ate8h"
+  | "semTelefone";
 
 const URGENCY: Record<
   Urgency,
@@ -145,7 +156,6 @@ export function Dashboard() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const saved = loadSavedServices();
     const response = await fetch("/api/phones", { cache: "no-store" });
     const payload = (await response.json()) as {
       phones?: PhoneEntry[];
@@ -156,6 +166,7 @@ export function Dashboard() {
     if (!response.ok && !payload.phones) {
       throw new Error(payload.error || payload.phonesError || "Não foi possível carregar os telefones.");
     }
+    const saved = loadSavedServices();
     setData({
       now: new Date().toISOString(),
       fileName: saved.fileName,
@@ -206,23 +217,53 @@ export function Dashboard() {
     };
   }, [load]);
 
+  function persistServices(services: Service[], fileName: string | null, uploadedAt: string | null) {
+    saveSavedServices({ fileName, uploadedAt, services });
+    setData((current) => (current ? { ...current, fileName, uploadedAt, services } : current));
+  }
+
   async function upload(file: File) {
     setUploading(true);
     try {
-      const services = parseUpload(file.name, new Uint8Array(await file.arrayBuffer()));
-      saveSavedServices({
-        fileName: file.name,
-        uploadedAt: new Date().toISOString(),
-        services,
-      });
-      toast.success(`${services.length} serviços carregados.`);
-      await load();
+      const incoming = parseUpload(file.name, new Uint8Array(await file.arrayBuffer()));
+      const previous = loadSavedServices();
+      const uploadedAt = new Date().toISOString();
+      const merged = mergeUpload(previous.services, incoming, uploadedAt);
+      persistServices(merged.services, file.name, uploadedAt);
+      const parts = [`${incoming.length} serviços no arquivo.`];
+      if (merged.promovidos) {
+        parts.push(
+          merged.promovidos === 1
+            ? "1 feito passou para concluído."
+            : `${merged.promovidos} feitos passaram para concluído.`,
+        );
+      }
+      if (merged.removidos) {
+        parts.push(
+          merged.removidos === 1
+            ? "1 em aberto saiu porque não está mais no arquivo."
+            : `${merged.removidos} em aberto saíram porque não estão mais no arquivo.`,
+        );
+      }
+      toast.success(parts.join(" "));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível ler o arquivo.");
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  function markServiceFeito(codigoTdc: string) {
+    if (!data) return;
+    persistServices(markFeito(data.services, codigoTdc, new Date().toISOString()), data.fileName, data.uploadedAt);
+    toast.success(`TdC ${codigoTdc} marcado como feito. Saiu da contagem em aberto.`);
+  }
+
+  function undoServiceFeito(codigoTdc: string) {
+    if (!data) return;
+    persistServices(undoFeito(data.services, codigoTdc), data.fileName, data.uploadedAt);
+    toast.success(`TdC ${codigoTdc} voltou para em aberto.`);
   }
 
   const services = useMemo(() => data?.services ?? [], [data?.services]);
@@ -242,17 +283,20 @@ export function Dashboard() {
         return { service, urgency, agent, alert };
       })
       .filter(({ service, urgency, agent }) => {
-        if (filter === "vencido" && urgency !== "vencido") return false;
-        if (filter === "critico" && urgency !== "critico") return false;
+        const status = serviceStatus(service);
+        const open = isOpenWork(service);
+        if (filter === "aberto" && !open) return false;
+        if (filter === "feito" && status !== "feito") return false;
+        if (filter === "concluido" && status !== "concluido") return false;
+        if (filter === "vencido" && (!open || urgency !== "vencido")) return false;
+        if (filter === "critico" && (!open || urgency !== "critico")) return false;
         if (
           filter === "ate8h" &&
-          urgency !== "critico" &&
-          urgency !== "alerta" &&
-          urgency !== "atencao"
+          (!open || (urgency !== "critico" && urgency !== "alerta" && urgency !== "atencao"))
         ) {
           return false;
         }
-        if (filter === "semTelefone" && agent) return false;
+        if (filter === "semTelefone" && (!open || agent)) return false;
         if (!term) return true;
         const haystack = [
           service.codigoTdc,
@@ -260,22 +304,41 @@ export function Dashboard() {
           service.chefe,
           service.endereco,
           service.municipio,
+          service.equipe,
+          service.estadoTdc,
         ]
           .join(" ")
           .toLocaleLowerCase("pt-BR");
         return haystack.includes(term);
       })
-      .sort((a, b) => a.service.prazoIso.localeCompare(b.service.prazoIso));
+      .sort((a, b) => compareServices(a.service, b.service));
   }, [data?.alerts, filter, now, phones, query, services]);
 
   const counts = useMemo(() => {
-    const tally = { total: services.length, vencido: 0, critico: 0, ate8h: 0, semTelefone: 0 };
+    const tally = {
+      aberto: 0,
+      vencido: 0,
+      critico: 0,
+      semTelefone: 0,
+      feito: 0,
+      concluido: 0,
+    };
     const missing = new Set<string>();
     for (const service of services) {
+      const status = serviceStatus(service);
+      if (status === "feito") {
+        tally.feito += 1;
+        continue;
+      }
+      if (status === "concluido") {
+        tally.concluido += 1;
+        continue;
+      }
+      if (!isOpenWork(service)) continue;
+      tally.aberto += 1;
       const urgency = urgencyOf(service.prazoIso, now);
       if (urgency === "vencido") tally.vencido += 1;
       if (urgency === "critico") tally.critico += 1;
-      if (urgency === "critico" || urgency === "alerta" || urgency === "atencao") tally.ate8h += 1;
       if (!matchAgent(service.chefe, phones) && service.chefe) {
         tally.semTelefone += 1;
         missing.add(service.chefe);
@@ -319,9 +382,9 @@ export function Dashboard() {
               Prazo em Campo
             </h1>
             <p className="mt-1 max-w-xl text-sm text-primary-foreground/85">
-              Os serviços entram pelo Excel ou CSV. A cor mostra quem está mais perto de vencer.
-              O botão abre o WhatsApp do responsável com a mensagem pronta, e você só confirma o
-              envio.
+              A lista mostra cada serviço do arquivo. A cor vale só para o que ainda está em
+              aberto. Quando o responsável confirmar, marque como feito: ele sai dessa contagem.
+              No arquivo seguinte, se o código não vier mais, passa para concluído.
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -389,18 +452,53 @@ export function Dashboard() {
           </Card>
         ) : null}
 
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatusCard label="Serviços" value={loading ? "…" : String(counts.total)} />
-          <StatusCard label="Vencidos" value={loading ? "…" : String(counts.vencido)} tone="rose" />
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatusCard
-            label="Menos de 1 hora"
-            value={loading ? "…" : String(counts.critico)}
-            tone="red"
+            label="Em aberto"
+            hint="ainda na fila"
+            value={loading ? "…" : String(counts.aberto)}
+            active={filter === "aberto"}
+            onClick={() => setFilter("aberto")}
           />
           <StatusCard
-            label="Sem telefone do responsável"
+            label="Vencidos"
+            hint="só em aberto"
+            value={loading ? "…" : String(counts.vencido)}
+            tone="rose"
+            active={filter === "vencido"}
+            onClick={() => setFilter("vencido")}
+          />
+          <StatusCard
+            label="Menos de 1 hora"
+            hint="só em aberto"
+            value={loading ? "…" : String(counts.critico)}
+            tone="red"
+            active={filter === "critico"}
+            onClick={() => setFilter("critico")}
+          />
+          <StatusCard
+            label="Sem telefone"
+            hint="só em aberto"
             value={loading ? "…" : String(counts.semTelefone)}
             tone="amber"
+            active={filter === "semTelefone"}
+            onClick={() => setFilter("semTelefone")}
+          />
+          <StatusCard
+            label="Feito"
+            hint="confirmação do agente"
+            value={loading ? "…" : String(counts.feito)}
+            tone="sky"
+            active={filter === "feito"}
+            onClick={() => setFilter("feito")}
+          />
+          <StatusCard
+            label="Concluído"
+            hint="atualizado no sistema"
+            value={loading ? "…" : String(counts.concluido)}
+            tone="stone"
+            active={filter === "concluido"}
+            onClick={() => setFilter("concluido")}
           />
         </section>
 
@@ -492,7 +590,7 @@ export function Dashboard() {
                     ))}
                   </ul>
                 </details>
-              ) : services.length ? (
+              ) : counts.aberto ? (
                 <p className="text-sm text-muted-foreground">
                   Todos os responsáveis deste arquivo têm telefone na planilha.
                 </p>
@@ -539,7 +637,7 @@ export function Dashboard() {
               ) : (
                 <p className="text-muted-foreground">Nenhuma planilha de serviços anexada.</p>
               )}
-              {services.length && counts.semTelefone ? (
+              {counts.aberto && counts.semTelefone ? (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-950">
                   Sem o telefone do responsável na planilha, o WhatsApp não tem para quem abrir.
                 </p>
@@ -572,6 +670,9 @@ export function Dashboard() {
           {(
             [
               ["todos", "Todos"],
+              ["aberto", "Em aberto"],
+              ["feito", "Feito"],
+              ["concluido", "Concluído"],
               ["vencido", "Vencidos"],
               ["critico", "Menos de 1 h"],
               ["ate8h", "Até 8 h"],
@@ -589,6 +690,14 @@ export function Dashboard() {
             </Button>
           ))}
         </div>
+
+        {services.length ? (
+          <p className="text-sm text-muted-foreground">
+            {rows.length} de {services.length}{" "}
+            {services.length === 1 ? "serviço nesta lista" : "serviços nesta lista"}. Em aberto
+            fica no topo. Feito e concluído continuam visíveis e não entram na contagem do prazo.
+          </p>
+        ) : null}
 
         {loading ? (
           <Card>
@@ -615,7 +724,7 @@ export function Dashboard() {
           <Card>
             <CardHeader>
               <CardTitle>Nenhum serviço neste filtro</CardTitle>
-              <CardDescription>Limpe a busca ou escolha Todos.</CardDescription>
+              <CardDescription>Limpe a busca ou escolha outro filtro.</CardDescription>
             </CardHeader>
           </Card>
         ) : (
@@ -625,19 +734,25 @@ export function Dashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Status</TableHead>
                       <TableHead>Prazo ANS legal</TableHead>
                       <TableHead>Código TdC</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Responsável</TableHead>
                       <TableHead>Endereço</TableHead>
-                      <TableHead>Aviso</TableHead>
+                      <TableHead>Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map(({ service, urgency, agent, alert }) => (
-                      <TableRow key={service.id} className={URGENCY[urgency].row}>
+                    {rows.map(({ service, urgency, agent, alert }) => {
+                      const status = serviceStatus(service);
+                      return (
+                      <TableRow key={service.id} className={rowTone(status, urgency)}>
+                        <TableCell className="min-w-40 whitespace-normal">
+                          <StatusBadge service={service} />
+                        </TableCell>
                         <TableCell className="whitespace-normal">
-                          <PrazoChip service={service} urgency={urgency} now={now} />
+                          <PrazoChip service={service} urgency={urgency} now={now} status={status} />
                         </TableCell>
                         <TableCell className="font-medium tabular-nums">
                           {service.codigoTdc}
@@ -648,9 +763,15 @@ export function Dashboard() {
                           <p className="text-xs text-muted-foreground">
                             {agent ? formatPhone(agent.telefone) : "sem telefone na planilha"}
                           </p>
+                          {service.equipe ? (
+                            <p className="text-xs text-muted-foreground">Equipe {service.equipe}</p>
+                          ) : null}
                         </TableCell>
                         <TableCell className="max-w-sm whitespace-normal">
                           <p>{service.endereco}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {[service.municipio, service.estadoTdc].filter(Boolean).join(" · ")}
+                          </p>
                           <a
                             className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary underline-offset-2 hover:underline"
                             href={mapsLink(service)}
@@ -662,45 +783,51 @@ export function Dashboard() {
                           </a>
                         </TableCell>
                         <TableCell className="whitespace-normal">
-                          <div className="flex flex-col items-start gap-1.5">
-                            <WhatsAppSend
-                              phone={agent?.telefone ?? null}
-                              message={alert?.message || (now ? buildMessage(service, now) : "")}
-                              urgent={urgency === "critico"}
-                            />
-                            <Button
-                              type="button"
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => setPreview(service)}
-                            >
-                              Ver texto
-                            </Button>
-                          </div>
+                          <ServiceActions
+                            service={service}
+                            phone={agent?.telefone ?? null}
+                            message={alert?.message || (now ? buildMessage(service, now) : "")}
+                            urgent={urgency === "critico"}
+                            onPreview={setPreview}
+                            onFeito={markServiceFeito}
+                            onUndo={undoServiceFeito}
+                          />
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </Card>
             </div>
 
             <div className="grid gap-3 md:hidden">
-              {rows.map(({ service, urgency, agent, alert }) => (
+              {rows.map(({ service, urgency, agent, alert }) => {
+                const status = serviceStatus(service);
+                return (
                 <article
                   key={service.id}
-                  className={cn("rounded-xl p-3 ring-1 ring-foreground/10", URGENCY[urgency].row)}
+                  className={cn("rounded-xl p-3 ring-1 ring-foreground/10", rowTone(status, urgency))}
                 >
-                  <PrazoChip service={service} urgency={urgency} now={now} />
+                  <div className="flex flex-col items-start gap-2">
+                    <StatusBadge service={service} />
+                    <PrazoChip service={service} urgency={urgency} now={now} status={status} />
+                  </div>
                   <p className="mt-3 text-xs text-muted-foreground">TdC {service.codigoTdc}</p>
                   <h2 className="font-heading text-lg leading-tight">{service.cliente}</h2>
                   <p className="mt-2 text-sm">{service.endereco}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {[service.municipio, service.estadoTdc].filter(Boolean).join(" · ")}
+                  </p>
                   <p className="mt-2 text-sm">
                     <span className="text-muted-foreground">Responsável · </span>
                     {service.chefe}
                     {agent ? ` · ${formatPhone(agent.telefone)}` : " · sem telefone"}
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  {service.equipe ? (
+                    <p className="text-xs text-muted-foreground">Equipe {service.equipe}</p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <a
                       className={buttonVariants({ variant: "outline", size: "sm" })}
                       href={mapsLink(service)}
@@ -710,17 +837,19 @@ export function Dashboard() {
                       <MapPin data-icon="inline-start" />
                       Abrir rota
                     </a>
-                    <WhatsAppSend
+                    <ServiceActions
+                      service={service}
                       phone={agent?.telefone ?? null}
                       message={alert?.message || (now ? buildMessage(service, now) : "")}
                       urgent={urgency === "critico"}
+                      onPreview={setPreview}
+                      onFeito={markServiceFeito}
+                      onUndo={undoServiceFeito}
                     />
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setPreview(service)}>
-                      Ver texto
-                    </Button>
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
@@ -806,14 +935,42 @@ export function Dashboard() {
   );
 }
 
+function compareServices(a: Service, b: Service) {
+  const rank = statusRank(serviceStatus(a)) - statusRank(serviceStatus(b));
+  if (rank !== 0) return rank;
+  if (serviceStatus(a) === "feito") return (b.feitoEm ?? "").localeCompare(a.feitoEm ?? "");
+  if (serviceStatus(a) === "concluido") {
+    return (b.concluidoEm ?? "").localeCompare(a.concluidoEm ?? "");
+  }
+  return a.prazoIso.localeCompare(b.prazoIso);
+}
+
+function statusRank(status: ServiceStatus) {
+  if (status === "aberto") return 0;
+  if (status === "feito") return 1;
+  return 2;
+}
+
+function rowTone(status: ServiceStatus, urgency: Urgency) {
+  if (status === "feito") return "bg-sky-50 hover:bg-sky-100";
+  if (status === "concluido") return "bg-stone-100 hover:bg-stone-200/70";
+  return URGENCY[urgency].row;
+}
+
 function StatusCard({
   label,
+  hint,
   value,
   tone,
+  active,
+  onClick,
 }: {
   label: string;
+  hint: string;
   value: string;
-  tone?: "rose" | "red" | "amber";
+  tone?: "rose" | "red" | "amber" | "sky" | "stone";
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const toneClass =
     tone === "rose"
@@ -822,32 +979,134 @@ function StatusCard({
         ? "text-red-700"
         : tone === "amber"
           ? "text-amber-800"
-          : "text-foreground";
+          : tone === "sky"
+            ? "text-sky-800"
+            : tone === "stone"
+              ? "text-stone-700"
+              : "text-foreground";
   return (
-    <Card size="sm">
-      <CardContent>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className={cn("font-heading text-3xl tabular-nums", toneClass)}>{value}</p>
-      </CardContent>
-    </Card>
+    <button type="button" onClick={onClick} className="text-left">
+      <Card size="sm" className={cn("h-full w-full", active && "ring-2 ring-primary")}>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className={cn("font-heading text-3xl tabular-nums", toneClass)}>{value}</p>
+          <p className="text-[0.7rem] text-muted-foreground">{hint}</p>
+        </CardContent>
+      </Card>
+    </button>
   );
+}
+
+function StatusBadge({ service }: { service: Service }) {
+  const status = serviceStatus(service);
+  if (status === "feito") {
+    return (
+      <span className="inline-flex flex-col gap-0.5">
+        <span className="inline-flex h-5 w-fit shrink-0 items-center rounded-full bg-sky-800 px-2 text-xs font-medium whitespace-nowrap text-white">
+          Feito
+        </span>
+        {service.feitoEm ? (
+          <span className="text-[0.68rem] text-muted-foreground">
+            agente · {formatClock(new Date(service.feitoEm))}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+  if (status === "concluido") {
+    return (
+      <span className="inline-flex flex-col gap-0.5">
+        <span className="inline-flex h-5 w-fit shrink-0 items-center rounded-full bg-stone-700 px-2 text-xs font-medium whitespace-nowrap text-white">
+          Concluído
+        </span>
+        {service.concluidoEm ? (
+          <span className="text-[0.68rem] text-muted-foreground">
+            sistema · {formatClock(new Date(service.concluidoEm))}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+  return <Badge variant="outline">Em aberto</Badge>;
 }
 
 function PrazoChip({
   service,
   urgency,
   now,
+  status,
 }: {
   service: Service;
   urgency: Urgency;
   now: number;
+  status: ServiceStatus;
 }) {
+  if (status !== "aberto") {
+    return (
+      <div
+        className={cn(
+          "inline-flex min-w-36 flex-col rounded-lg px-2.5 py-1.5",
+          status === "feito" ? "bg-sky-800 text-white" : "bg-stone-600 text-white",
+        )}
+      >
+        <span className="text-[0.68rem] font-semibold tracking-wide uppercase">
+          {status === "feito" ? "Feito" : "Concluído"}
+        </span>
+        <span className="text-sm font-semibold tabular-nums">{formatPrazo(service.prazoIso)}</span>
+        <span className="text-xs opacity-90">
+          {status === "feito" ? "aguardando o sistema" : "saiu do arquivo"}
+        </span>
+      </div>
+    );
+  }
   const style = URGENCY[urgency];
   return (
     <div className={cn("inline-flex min-w-36 flex-col rounded-lg px-2.5 py-1.5", style.chip)}>
       <span className="text-[0.68rem] font-semibold tracking-wide uppercase">{style.label}</span>
       <span className="text-sm font-semibold tabular-nums">{formatPrazo(service.prazoIso)}</span>
       <span className="text-xs opacity-90">{formatRemaining(service.prazoIso, now)}</span>
+    </div>
+  );
+}
+
+function ServiceActions({
+  service,
+  phone,
+  message,
+  urgent,
+  onPreview,
+  onFeito,
+  onUndo,
+}: {
+  service: Service;
+  phone: string | null;
+  message: string;
+  urgent: boolean;
+  onPreview: (service: Service) => void;
+  onFeito: (codigoTdc: string) => void;
+  onUndo: (codigoTdc: string) => void;
+}) {
+  const status = serviceStatus(service);
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      {status !== "concluido" ? (
+        <WhatsAppSend phone={phone} message={message} urgent={urgent && status === "aberto"} />
+      ) : null}
+      {status === "aberto" ? (
+        <Button type="button" size="sm" onClick={() => onFeito(service.codigoTdc)}>
+          <Check data-icon="inline-start" />
+          Marcar feito
+        </Button>
+      ) : null}
+      {status === "feito" ? (
+        <Button type="button" size="sm" variant="outline" onClick={() => onUndo(service.codigoTdc)}>
+          <Undo2 data-icon="inline-start" />
+          Desfazer feito
+        </Button>
+      ) : null}
+      <Button type="button" size="xs" variant="ghost" onClick={() => onPreview(service)}>
+        Ver texto
+      </Button>
     </div>
   );
 }
