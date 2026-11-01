@@ -80,6 +80,18 @@ type Filter =
   | "foraPrazo"
   | "semTelefone";
 
+const REPORTS: { value: Filter; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "aberto", label: "Em aberto" },
+  { value: "umaHora", label: "Faltando 1 hora" },
+  { value: "duasHoras", label: "Faltando 2 horas" },
+  { value: "tresHoras", label: "Faltando 3 horas" },
+  { value: "vencido", label: "Vencido" },
+  { value: "feito", label: "Feito" },
+  { value: "foraPrazo", label: "Fora do prazo" },
+  { value: "semTelefone", label: "Sem telefone" },
+];
+
 const URGENCY: Record<
   Urgency,
   { label: string; row: string; chip: string; dot: string }
@@ -313,6 +325,23 @@ export function Dashboard() {
 
   const services = useMemo(() => data?.services ?? [], [data?.services]);
   const phones = useMemo(() => data?.phones ?? [], [data?.phones]);
+  const chefeByCodigo = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const service of services) {
+      if (service.chefe) map.set(service.codigoTdc, service.chefe);
+    }
+    return map;
+  }, [services]);
+  const fechamentoComChefe = useMemo(() => {
+    if (!fechamento) return null;
+    return {
+      ...fechamento,
+      itens: fechamento.itens.map((item) => ({
+        ...item,
+        chefe: item.chefe || chefeByCodigo.get(item.codigoTdc) || "",
+      })),
+    };
+  }, [chefeByCodigo, fechamento]);
   const owners = phones.filter((phone) => phone.papel === "responsavel");
   const agents = phones.filter((phone) => phone.papel === "agente");
 
@@ -355,13 +384,15 @@ export function Dashboard() {
   }, [data?.alerts, filter, now, phones, query, services]);
 
   const foraItens = useMemo(() => {
-    const itens = fechamento?.itens.filter((item) => item.fora) ?? [];
+    const itens = fechamentoComChefe?.itens.filter((item) => item.fora) ?? [];
     const term = query.trim().toLocaleLowerCase("pt-BR");
     if (!term) return itens;
     return itens.filter((item) =>
       `${item.codigoTdc} ${item.chefe ?? ""}`.toLocaleLowerCase("pt-BR").includes(term),
     );
-  }, [fechamento, query]);
+  }, [fechamentoComChefe, query]);
+  const foraSemResponsavel = foraItens.length > 0 && foraItens.every((item) => !item.chefe);
+  const reportLabel = REPORTS.find((report) => report.value === filter)?.label ?? "Relatório";
   const foraPages = Math.max(1, Math.ceil(foraItens.length / 40));
   const foraPageSafe = Math.min(foraPage, foraPages - 1);
   const foraVisible = foraItens.slice(foraPageSafe * 40, foraPageSafe * 40 + 40);
@@ -768,40 +799,50 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ["todos", "Todos"],
-              ["aberto", "Em aberto"],
-              ["umaHora", "Faltando 1 hora"],
-              ["duasHoras", "Faltando 2 horas"],
-              ["tresHoras", "Faltando 3 horas"],
-              ["vencido", "Vencido"],
-              ["feito", "Feito"],
-              ["foraPrazo", "Fora do prazo"],
-              ["semTelefone", "Sem telefone"],
-            ] as const
-          ).map(([value, label]) => (
-            <Button
-              key={value}
-              type="button"
-              size="sm"
-              variant={filter === value ? "default" : "outline"}
-              onClick={() => setFilter(value)}
-            >
-              {label}
-            </Button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            {REPORTS.map(({ value, label }) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={filter === value ? "default" : "outline"}
+                onClick={() => setFilter(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={filter === "foraPrazo" ? !fechamentoComChefe?.itens.length : rows.length === 0}
+            onClick={() => {
+              if (filter === "foraPrazo") {
+                if (fechamentoComChefe) downloadAnalitico(fechamentoComChefe);
+                return;
+              }
+              downloadServices(rows, reportLabel);
+            }}
+          >
+            <Download data-icon="inline-start" />
+            Baixar analítico Excel
+          </Button>
         </div>
 
         {filter === "foraPrazo" ? (
           <FechamentoList
-            fechamento={fechamento}
+            fechamento={fechamentoComChefe}
             itens={foraVisible}
             total={foraItens.length}
             page={foraPageSafe}
             pageCount={foraPages}
             onPage={setForaPage}
+            namesMissing={foraSemResponsavel}
+            onDownload={() => {
+              if (fechamentoComChefe) downloadAnalitico(fechamentoComChefe);
+            }}
           />
         ) : (
           <>
@@ -963,6 +1004,12 @@ export function Dashboard() {
                 </article>
                 );
               })}
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" size="sm" variant="outline" onClick={() => downloadServices(rows, reportLabel)}>
+                <Download data-icon="inline-start" />
+                Baixar analítico Excel
+              </Button>
             </div>
           </>
         )}
@@ -1134,6 +1181,8 @@ function FechamentoList({
   page,
   pageCount,
   onPage,
+  namesMissing,
+  onDownload,
 }: {
   fechamento: SavedFechamento | null;
   itens: SavedFechamento["itens"];
@@ -1141,6 +1190,8 @@ function FechamentoList({
   page: number;
   pageCount: number;
   onPage: (page: number) => void;
+  namesMissing: boolean;
+  onDownload: () => void;
 }) {
   if (!fechamento) {
     return (
@@ -1170,6 +1221,12 @@ function FechamentoList({
   }
   return (
     <Card className="py-0">
+      {namesMissing ? (
+        <p className="px-4 pt-3 text-sm text-amber-950">
+          O responsável não veio neste anexo. Clique em Anexar baixas e escolha o mesmo Excel outra
+          vez. O nome está na coluna Chefe/Responsável de Equipe da aba TdC.
+        </p>
+      ) : null}
       <Table>
         <TableHeader>
           <TableRow>
@@ -1202,7 +1259,7 @@ function FechamentoList({
           {fechamento.semDataFim ? ` · ${fechamento.semDataFim} sem Data Fim` : ""}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={() => downloadAnalitico(fechamento)}>
+          <Button type="button" size="sm" variant="outline" onClick={onDownload}>
             <Download data-icon="inline-start" />
             Baixar analítico Excel
           </Button>
@@ -1234,13 +1291,36 @@ function FechamentoList({
 function downloadAnalitico(fechamento: SavedFechamento) {
   const rows = fechamento.itens.map((item) => ({
     "Código TdC": item.codigoTdc,
-    "Responsável": item.chefe || "Não informado",
+    Responsável: item.chefe || "Não informado",
     "Prazo ANS Legal": formatPrazo(item.prazoIso),
     "Data Fim": formatPrazo(item.fimIso),
-    "Situação": item.fora ? "Fora do prazo" : "Dentro do prazo",
+    Situação: item.fora ? "Fora do prazo" : "Dentro do prazo",
   }));
+  downloadSheet(rows, "analitico_baixas", [14, 42, 20, 20, 20]);
+}
+
+function downloadServices(
+  rows: { service: Service; urgency: Urgency; agent: PhoneEntry | null }[],
+  report: string,
+) {
+  const data = rows.map(({ service, urgency, agent }) => ({
+    Status: serviceStatus(service) === "feito" ? "Feito" : URGENCY[urgency].label,
+    "Prazo ANS legal": formatPrazo(service.prazoIso),
+    "Código TdC": service.codigoTdc,
+    Cliente: service.cliente,
+    Responsável: service.chefe || "Não informado",
+    Telefone: agent ? formatPhone(agent.telefone) : "",
+    Equipe: service.equipe,
+    Endereço: service.endereco,
+    Município: service.municipio,
+    "Estado TdC": service.estadoTdc,
+  }));
+  downloadSheet(data, `analitico_${fileSlug(report)}`, [18, 20, 14, 32, 36, 18, 28, 42, 18, 14]);
+}
+
+function downloadSheet(rows: Record<string, string>[], filename: string, widths: number[]) {
   const sheet = XLSX.utils.json_to_sheet(rows);
-  sheet["!cols"] = [{ wch: 14 }, { wch: 42 }, { wch: 20 }, { wch: 20 }, { wch: 20 }];
+  sheet["!cols"] = widths.map((wch) => ({ wch }));
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, "Analítico");
   const content = XLSX.write(book, { type: "array", bookType: "xlsx" });
@@ -1251,9 +1331,18 @@ function downloadAnalitico(fechamento: SavedFechamento) {
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = `analitico_baixas_${dateForFilename()}.xlsx`;
+  link.download = `${filename}_${dateForFilename()}.xlsx`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function fileSlug(label: string) {
+  return label
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 function dateForFilename() {
