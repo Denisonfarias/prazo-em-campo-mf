@@ -47,7 +47,7 @@ import {
 } from "@/lib/domain";
 import { SHEET_EDIT_URL } from "@/lib/config";
 import { loadFechamento, saveFechamento, type SavedFechamento } from "@/lib/fechamento-store";
-import { isFechamentoWorkbook, parseFechamento } from "@/lib/parse-fechamento";
+import { parseFechamento } from "@/lib/parse-fechamento";
 import { parseUpload } from "@/lib/parse-services";
 import { loadSavedServices, saveSavedServices } from "@/lib/saved-services";
 import type { Alert, PhoneEntry, Service, ServiceStatus, Urgency } from "@/lib/types";
@@ -252,11 +252,6 @@ export function Dashboard() {
 
   async function upload(file: File) {
     const buffer = new Uint8Array(await file.arrayBuffer());
-    if (isFechamentoWorkbook(file.name, buffer)) {
-      await applyFechamento(file.name, buffer);
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
     setUploading(true);
     try {
       const incoming = parseUpload(file.name, buffer);
