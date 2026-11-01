@@ -40,7 +40,8 @@ test("interpreta número de série do Excel como o mesmo horário de parede", ()
 test("classifica a proximidade do vencimento", () => {
   const deadline = Date.parse(PRAZO);
   assert.equal(urgencyOf(PRAZO, deadline - 30 * 60 * 1000), "critico");
-  assert.equal(urgencyOf(PRAZO, deadline - 2 * 60 * 60 * 1000), "alerta");
+  assert.equal(urgencyOf(PRAZO, deadline - 90 * 60 * 1000), "duasHoras");
+  assert.equal(urgencyOf(PRAZO, deadline - 150 * 60 * 1000), "tresHoras");
   assert.equal(urgencyOf(PRAZO, deadline - 5 * 60 * 60 * 1000), "atencao");
   assert.equal(urgencyOf(PRAZO, deadline - 20 * 60 * 60 * 1000), "folga");
   assert.equal(urgencyOf(PRAZO, deadline - 30 * 60 * 60 * 1000), "ok");
@@ -109,12 +110,13 @@ test("lê csv de serviços separado por ponto e vírgula", () => {
   assert.match(mapsLink(services[0]!), /destination=-7\.23,-39\.31/);
   const message = buildMessage(services[0]!, Date.parse(PRAZO) - 55 * 60 * 1000);
   assert.match(message, /cerca de uma hora/);
-  assert.match(message, /MARIA DA SILVA/);
+  assert.doesNotMatch(message, /MARIA DA SILVA/);
+  assert.doesNotMatch(message, /Cliente:/);
   assert.match(message, /ST RIACHO SECO/);
   assert.match(message, /google\.com\/maps/);
   const link = whatsappLink("5585999990000", message);
   assert.ok(link.startsWith("https://wa.me/5585999990000?text="));
-  assert.match(decodeURIComponent(link), /MARIA DA SILVA/);
+  assert.doesNotMatch(decodeURIComponent(link), /MARIA DA SILVA/);
   assert.match(decodeURIComponent(link), /ST RIACHO SECO/);
 });
 

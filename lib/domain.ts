@@ -151,7 +151,8 @@ export function urgencyOf(prazoIso: string, now: number): Urgency {
   const remaining = new Date(prazoIso).getTime() - now;
   if (remaining <= 0) return "vencido";
   if (remaining <= 60 * 60 * 1000) return "critico";
-  if (remaining <= 3 * 60 * 60 * 1000) return "alerta";
+  if (remaining <= 2 * 60 * 60 * 1000) return "duasHoras";
+  if (remaining <= 3 * 60 * 60 * 1000) return "tresHoras";
   if (remaining <= 8 * 60 * 60 * 1000) return "atencao";
   if (remaining <= 24 * 60 * 60 * 1000) return "folga";
   return "ok";
@@ -204,7 +205,6 @@ export function buildMessage(service: Service, now: number): string {
   return [
     intro,
     "",
-    `Cliente: ${service.cliente || "não informado"}`,
     `Código TdC: ${service.codigoTdc}`,
     `Responsável: ${service.chefe || "não informado"}`,
     `Endereço: ${service.endereco || "não informado"}`,

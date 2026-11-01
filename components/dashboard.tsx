@@ -68,11 +68,11 @@ type StatePayload = {
 type Filter =
   | "todos"
   | "aberto"
-  | "feito"
-  | "concluido"
+  | "umaHora"
+  | "duasHoras"
+  | "tresHoras"
   | "vencido"
-  | "critico"
-  | "ate8h"
+  | "feito"
   | "semTelefone";
 
 const URGENCY: Record<
@@ -81,21 +81,27 @@ const URGENCY: Record<
 > = {
   vencido: {
     label: "Vencido",
-    row: "bg-rose-50 hover:bg-rose-100",
-    chip: "bg-rose-800 text-white",
-    dot: "bg-rose-700",
+    row: "bg-neutral-100 hover:bg-neutral-200",
+    chip: "bg-black text-white",
+    dot: "bg-black",
   },
   critico: {
-    label: "Menos de 1 hora",
+    label: "Faltando 1 hora",
     row: "bg-red-50 hover:bg-red-100",
     chip: "bg-red-600 text-white",
     dot: "bg-red-600",
   },
-  alerta: {
-    label: "Até 3 horas",
+  duasHoras: {
+    label: "Faltando 2 horas",
     row: "bg-orange-50 hover:bg-orange-100",
-    chip: "bg-orange-600 text-white",
+    chip: "bg-orange-500 text-white",
     dot: "bg-orange-500",
+  },
+  tresHoras: {
+    label: "Faltando 3 horas",
+    row: "bg-yellow-50 hover:bg-yellow-100",
+    chip: "bg-yellow-400 text-yellow-950",
+    dot: "bg-yellow-400",
   },
   atencao: {
     label: "Até 8 horas",
@@ -231,13 +237,6 @@ export function Dashboard() {
       const merged = mergeUpload(previous.services, incoming, uploadedAt);
       persistServices(merged.services, file.name, uploadedAt);
       const parts = [`${incoming.length} serviços no arquivo.`];
-      if (merged.promovidos) {
-        parts.push(
-          merged.promovidos === 1
-            ? "1 feito passou para concluído."
-            : `${merged.promovidos} feitos passaram para concluído.`,
-        );
-      }
       if (merged.removidos) {
         parts.push(
           merged.removidos === 1
@@ -287,15 +286,10 @@ export function Dashboard() {
         const open = isOpenWork(service);
         if (filter === "aberto" && !open) return false;
         if (filter === "feito" && status !== "feito") return false;
-        if (filter === "concluido" && status !== "concluido") return false;
         if (filter === "vencido" && (!open || urgency !== "vencido")) return false;
-        if (filter === "critico" && (!open || urgency !== "critico")) return false;
-        if (
-          filter === "ate8h" &&
-          (!open || (urgency !== "critico" && urgency !== "alerta" && urgency !== "atencao"))
-        ) {
-          return false;
-        }
+        if (filter === "umaHora" && (!open || urgency !== "critico")) return false;
+        if (filter === "duasHoras" && (!open || urgency !== "duasHoras")) return false;
+        if (filter === "tresHoras" && (!open || urgency !== "tresHoras")) return false;
         if (filter === "semTelefone" && (!open || agent)) return false;
         if (!term) return true;
         const haystack = [
@@ -317,11 +311,12 @@ export function Dashboard() {
   const counts = useMemo(() => {
     const tally = {
       aberto: 0,
+      umaHora: 0,
+      duasHoras: 0,
+      tresHoras: 0,
       vencido: 0,
-      critico: 0,
-      semTelefone: 0,
       feito: 0,
-      concluido: 0,
+      semTelefone: 0,
     };
     const missing = new Set<string>();
     for (const service of services) {
@@ -330,15 +325,13 @@ export function Dashboard() {
         tally.feito += 1;
         continue;
       }
-      if (status === "concluido") {
-        tally.concluido += 1;
-        continue;
-      }
       if (!isOpenWork(service)) continue;
       tally.aberto += 1;
       const urgency = urgencyOf(service.prazoIso, now);
       if (urgency === "vencido") tally.vencido += 1;
-      if (urgency === "critico") tally.critico += 1;
+      if (urgency === "critico") tally.umaHora += 1;
+      if (urgency === "duasHoras") tally.duasHoras += 1;
+      if (urgency === "tresHoras") tally.tresHoras += 1;
       if (!matchAgent(service.chefe, phones) && service.chefe) {
         tally.semTelefone += 1;
         missing.add(service.chefe);
@@ -384,7 +377,6 @@ export function Dashboard() {
             <p className="mt-1 max-w-xl text-sm text-primary-foreground/85">
               A lista mostra cada serviço do arquivo. A cor vale só para o que ainda está em
               aberto. Quando o responsável confirmar, marque como feito: ele sai dessa contagem.
-              No arquivo seguinte, se o código não vier mais, passa para concluído.
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -460,48 +452,49 @@ export function Dashboard() {
             label="Em aberto"
             hint="ainda na fila"
             value={loading ? "…" : String(counts.aberto)}
+            tone="blue"
             active={filter === "aberto"}
             onClick={() => setFilter("aberto")}
           />
           <StatusCard
-            label="Vencidos"
-            hint="só em aberto"
+            label="Faltando 1 hora"
+            hint="até 1 hora"
+            value={loading ? "…" : String(counts.umaHora)}
+            tone="red"
+            active={filter === "umaHora"}
+            onClick={() => setFilter("umaHora")}
+          />
+          <StatusCard
+            label="Faltando 2 horas"
+            hint="de 1 a 2 horas"
+            value={loading ? "…" : String(counts.duasHoras)}
+            tone="orange"
+            active={filter === "duasHoras"}
+            onClick={() => setFilter("duasHoras")}
+          />
+          <StatusCard
+            label="Faltando 3 horas"
+            hint="de 2 a 3 horas"
+            value={loading ? "…" : String(counts.tresHoras)}
+            tone="yellow"
+            active={filter === "tresHoras"}
+            onClick={() => setFilter("tresHoras")}
+          />
+          <StatusCard
+            label="Vencido"
+            hint="prazo encerrado"
             value={loading ? "…" : String(counts.vencido)}
-            tone="rose"
+            tone="black"
             active={filter === "vencido"}
             onClick={() => setFilter("vencido")}
-          />
-          <StatusCard
-            label="Menos de 1 hora"
-            hint="só em aberto"
-            value={loading ? "…" : String(counts.critico)}
-            tone="red"
-            active={filter === "critico"}
-            onClick={() => setFilter("critico")}
-          />
-          <StatusCard
-            label="Sem telefone"
-            hint="só em aberto"
-            value={loading ? "…" : String(counts.semTelefone)}
-            tone="amber"
-            active={filter === "semTelefone"}
-            onClick={() => setFilter("semTelefone")}
           />
           <StatusCard
             label="Feito"
             hint="confirmação do agente"
             value={loading ? "…" : String(counts.feito)}
-            tone="sky"
+            tone="green"
             active={filter === "feito"}
             onClick={() => setFilter("feito")}
-          />
-          <StatusCard
-            label="Concluído"
-            hint="atualizado no sistema"
-            value={loading ? "…" : String(counts.concluido)}
-            tone="stone"
-            active={filter === "concluido"}
-            onClick={() => setFilter("concluido")}
           />
         </section>
 
@@ -605,7 +598,7 @@ export function Dashboard() {
             <CardHeader>
               <CardTitle>Aviso no WhatsApp</CardTitle>
               <CardDescription>
-                Em cada serviço, Avisar no WhatsApp abre a conversa do responsável com cliente,
+                Em cada serviço, Avisar no WhatsApp abre a conversa do responsável com o código,
                 endereço, prazo e rota já escritos. Você só toca em enviar, pelo celular ou pelo
                 WhatsApp Web.
               </CardDescription>
@@ -674,11 +667,11 @@ export function Dashboard() {
             [
               ["todos", "Todos"],
               ["aberto", "Em aberto"],
+              ["umaHora", "Faltando 1 hora"],
+              ["duasHoras", "Faltando 2 horas"],
+              ["tresHoras", "Faltando 3 horas"],
+              ["vencido", "Vencido"],
               ["feito", "Feito"],
-              ["concluido", "Concluído"],
-              ["vencido", "Vencidos"],
-              ["critico", "Menos de 1 h"],
-              ["ate8h", "Até 8 h"],
               ["semTelefone", "Sem telefone"],
             ] as const
           ).map(([value, label]) => (
@@ -698,7 +691,7 @@ export function Dashboard() {
           <p className="text-sm text-muted-foreground">
             {rows.length} de {services.length}{" "}
             {services.length === 1 ? "serviço nesta lista" : "serviços nesta lista"}. Em aberto
-            fica no topo. Feito e concluído continuam visíveis e não entram na contagem do prazo.
+            fica no topo. Feito continua visível e não entra na contagem do prazo.
           </p>
         ) : null}
 
@@ -941,21 +934,15 @@ function compareServices(a: Service, b: Service) {
   const rank = statusRank(serviceStatus(a)) - statusRank(serviceStatus(b));
   if (rank !== 0) return rank;
   if (serviceStatus(a) === "feito") return (b.feitoEm ?? "").localeCompare(a.feitoEm ?? "");
-  if (serviceStatus(a) === "concluido") {
-    return (b.concluidoEm ?? "").localeCompare(a.concluidoEm ?? "");
-  }
   return a.prazoIso.localeCompare(b.prazoIso);
 }
 
 function statusRank(status: ServiceStatus) {
-  if (status === "aberto") return 0;
-  if (status === "feito") return 1;
-  return 2;
+  return status === "aberto" ? 0 : 1;
 }
 
 function rowTone(status: ServiceStatus, urgency: Urgency) {
-  if (status === "feito") return "bg-sky-50 hover:bg-sky-100";
-  if (status === "concluido") return "bg-stone-100 hover:bg-stone-200/70";
+  if (status === "feito") return "bg-green-50 hover:bg-green-100";
   return URGENCY[urgency].row;
 }
 
@@ -970,25 +957,42 @@ function StatusCard({
   label: string;
   hint: string;
   value: string;
-  tone?: "rose" | "red" | "amber" | "sky" | "stone";
+  tone?: "blue" | "red" | "orange" | "yellow" | "black" | "green";
   active?: boolean;
   onClick?: () => void;
 }) {
   const toneClass =
-    tone === "rose"
-      ? "text-rose-800"
+    tone === "blue"
+      ? "text-blue-700"
       : tone === "red"
-        ? "text-red-700"
-        : tone === "amber"
-          ? "text-amber-800"
-          : tone === "sky"
-            ? "text-sky-800"
-            : tone === "stone"
-              ? "text-stone-700"
-              : "text-foreground";
+        ? "text-red-600"
+        : tone === "orange"
+          ? "text-orange-600"
+          : tone === "yellow"
+            ? "text-yellow-500"
+            : tone === "black"
+              ? "text-black"
+              : tone === "green"
+                ? "text-green-700"
+                : "text-foreground";
+  const barClass =
+    tone === "blue"
+      ? "bg-blue-600"
+      : tone === "red"
+        ? "bg-red-600"
+        : tone === "orange"
+          ? "bg-orange-500"
+          : tone === "yellow"
+            ? "bg-yellow-400"
+            : tone === "black"
+              ? "bg-black"
+              : tone === "green"
+                ? "bg-green-600"
+                : "bg-transparent";
   return (
     <button type="button" onClick={onClick} className="text-left">
       <Card size="sm" className={cn("h-full w-full", active && "ring-2 ring-primary")}>
+        <span className={cn("block h-1.5", barClass)} />
         <CardContent>
           <p className="text-xs text-muted-foreground">{label}</p>
           <p className={cn("font-heading text-3xl tabular-nums", toneClass)}>{value}</p>
@@ -1004,26 +1008,12 @@ function StatusBadge({ service }: { service: Service }) {
   if (status === "feito") {
     return (
       <span className="inline-flex flex-col gap-0.5">
-        <span className="inline-flex h-5 w-fit shrink-0 items-center rounded-full bg-sky-800 px-2 text-xs font-medium whitespace-nowrap text-white">
+        <span className="inline-flex h-5 w-fit shrink-0 items-center rounded-full bg-green-700 px-2 text-xs font-medium whitespace-nowrap text-white">
           Feito
         </span>
         {service.feitoEm ? (
           <span className="text-[0.68rem] text-muted-foreground">
             agente · {formatClock(new Date(service.feitoEm))}
-          </span>
-        ) : null}
-      </span>
-    );
-  }
-  if (status === "concluido") {
-    return (
-      <span className="inline-flex flex-col gap-0.5">
-        <span className="inline-flex h-5 w-fit shrink-0 items-center rounded-full bg-stone-700 px-2 text-xs font-medium whitespace-nowrap text-white">
-          Concluído
-        </span>
-        {service.concluidoEm ? (
-          <span className="text-[0.68rem] text-muted-foreground">
-            sistema · {formatClock(new Date(service.concluidoEm))}
           </span>
         ) : null}
       </span>
@@ -1045,19 +1035,10 @@ function PrazoChip({
 }) {
   if (status !== "aberto") {
     return (
-      <div
-        className={cn(
-          "inline-flex min-w-36 flex-col rounded-lg px-2.5 py-1.5",
-          status === "feito" ? "bg-sky-800 text-white" : "bg-stone-600 text-white",
-        )}
-      >
-        <span className="text-[0.68rem] font-semibold tracking-wide uppercase">
-          {status === "feito" ? "Feito" : "Concluído"}
-        </span>
+      <div className="inline-flex min-w-36 flex-col rounded-lg bg-green-700 px-2.5 py-1.5 text-white">
+        <span className="text-[0.68rem] font-semibold tracking-wide uppercase">Feito</span>
         <span className="text-sm font-semibold tabular-nums">{formatPrazo(service.prazoIso)}</span>
-        <span className="text-xs opacity-90">
-          {status === "feito" ? "aguardando o sistema" : "saiu do arquivo"}
-        </span>
+        <span className="text-xs opacity-90">confirmado pelo agente</span>
       </div>
     );
   }
@@ -1091,9 +1072,7 @@ function ServiceActions({
   const status = serviceStatus(service);
   return (
     <div className="flex flex-col items-start gap-1.5">
-      {status !== "concluido" ? (
-        <WhatsAppSend phone={phone} message={message} urgent={urgent && status === "aberto"} />
-      ) : null}
+      <WhatsAppSend phone={phone} message={message} urgent={urgent && status === "aberto"} />
       {status === "aberto" ? (
         <Button type="button" size="sm" onClick={() => onFeito(service.codigoTdc)}>
           <Check data-icon="inline-start" />

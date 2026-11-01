@@ -1,7 +1,8 @@
 import type { Service, ServiceStatus } from "@/lib/types";
 
 export function serviceStatus(service: Service): ServiceStatus {
-  if (service.status === "feito" || service.status === "concluido") return service.status;
+  const status = service.status as string | undefined;
+  if (status === "feito" || status === "concluido") return "feito";
   return "aberto";
 }
 
@@ -20,32 +21,21 @@ export function mergeUpload(previous: Service[], incoming: Service[], at: string
       id: prior?.id ?? service.id,
       status: staysDone ? "feito" : "aberto",
       feitoEm: staysDone ? prior?.feitoEm ?? at : null,
-      concluidoEm: null,
       noArquivoAtual: true,
     };
   });
 
-  let promovidos = 0;
   let removidos = 0;
   for (const prior of previous) {
     if (incomingCodes.has(prior.codigoTdc)) continue;
-    const status = serviceStatus(prior);
-    if (status === "feito") {
-      services.push({
-        ...prior,
-        status: "concluido",
-        concluidoEm: at,
-        noArquivoAtual: false,
-      });
-      promovidos += 1;
-    } else if (status === "concluido") {
-      services.push({ ...prior, status: "concluido", noArquivoAtual: false });
+    if (serviceStatus(prior) === "feito") {
+      services.push({ ...prior, status: "feito", noArquivoAtual: false });
     } else {
       removidos += 1;
     }
   }
 
-  return { services, promovidos, removidos };
+  return { services, removidos };
 }
 
 export function markFeito(services: Service[], codigoTdc: string, at: string): Service[] {

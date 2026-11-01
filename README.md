@@ -52,16 +52,11 @@ Anexe um `.xlsx` ou `.csv` exportado do sistema. As colunas usadas são:
 - Nome e Sobrenome Cliente
 - Latitude e Longitude, quando existirem, para o link da rota
 
-Um arquivo novo atualiza a fila. Serviço marcado como **feito** que ainda aparece no arquivo continua feito. Se o código não vier mais, ele passa para **concluído**. Serviço em aberto que não está no arquivo novo sai da lista.
+Um arquivo novo atualiza a fila. Serviço marcado como **feito** continua feito, mesmo que o código saia do arquivo. Serviço em aberto que não está no arquivo novo sai da lista.
 
-## Feito e concluído
+## Feito
 
-O painel separa duas confirmações:
-
-1. **Feito** — você marcou depois que o responsável respondeu que o serviço já foi feito. Ele sai das contagens de em aberto, vencidos e menos de 1 hora.
-2. **Concluído** — um arquivo seguinte não trouxe mais aquele Código TdC, então o sistema já atualizou.
-
-**Desfazer feito** devolve o serviço para em aberto, enquanto ele ainda estiver no arquivo. A lista inteira continua disponível no filtro **Todos**.
+**Feito** é a confirmação de que o responsável já realizou o serviço. Ele sai das contagens de em aberto, vencido e das horas que faltam. **Desfazer feito** devolve o serviço para em aberto. A lista inteira continua no filtro **Todos**.
 
 ## Telefones
 
@@ -80,7 +75,7 @@ A planilha precisa estar compartilhada como qualquer pessoa com o link pode ver.
 
 Em cada serviço, **Avisar no WhatsApp** abre o WhatsApp (celular ou WhatsApp Web) na conversa do responsável, com a mensagem já escrita. Você só confirma o envio. Não precisa de API nem de plano pago.
 
-A mensagem leva o aviso de prazo, o nome do cliente, o código do TdC, o responsável, o endereço, o prazo e o link da rota no Google Maps.
+A mensagem leva o aviso de prazo, o código do TdC, o responsável, o endereço, o prazo e o link da rota no Google Maps.
 
 O envio automático continua disponível, se um dia quiser ligar uma API. Em **WhatsApp** no topo da tela:
 
@@ -91,4 +86,4 @@ As mesmas credenciais podem ir nas variáveis do arquivo `.env.example`.
 
 ## Cores do prazo
 
-Vermelho escuro é prazo vencido. Vermelho é menos de 1 hora, a hora de abrir o WhatsApp e enviar. Laranja é até 3 horas, âmbar até 8, verde-limão até 24 e verde depois disso.
+Preto é prazo vencido. Vermelho é a última hora, laranja é de 1 a 2 horas e amarelo é de 2 a 3 horas. Âmbar é até 8 horas, verde-limão até 24 e verde depois disso. Feito, no painel, é verde. Em aberto é azul.

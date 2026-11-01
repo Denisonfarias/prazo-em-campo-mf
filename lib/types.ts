@@ -1,4 +1,4 @@
-export type ServiceStatus = "aberto" | "feito" | "concluido";
+export type ServiceStatus = "aberto" | "feito";
 
 export type Service = {
   id: string;
@@ -14,7 +14,6 @@ export type Service = {
   equipe: string;
   status?: ServiceStatus;
   feitoEm?: string | null;
-  concluidoEm?: string | null;
   noArquivoAtual?: boolean;
 };
 
@@ -87,7 +86,8 @@ export type StoreData = {
 export type Urgency =
   | "vencido"
   | "critico"
-  | "alerta"
+  | "duasHoras"
+  | "tresHoras"
   | "atencao"
   | "folga"
   | "ok";
