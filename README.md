@@ -1,15 +1,26 @@
 # Prazo em Campo
 
-Acompanhamento dos serviços de campo. Você anexa o Excel ou o CSV, o painel colore o **Prazo ANS legal** conforme a hora atual e, na última hora, dispara um WhatsApp para o responsável da equipe e para o seu número.
+Acompanhamento dos serviços de campo. Você anexa o Excel ou o CSV, o painel colore o **Prazo ANS legal** conforme a hora atual e o botão abre o WhatsApp do responsável com a mensagem pronta.
 
-## Como rodar
+A lista de serviços fica salva neste navegador. Os telefones são lidos da planilha do Google.
+
+## Colocar no ar pelo GitHub
+
+1. Crie um repositório vazio no GitHub.
+2. Envie o arquivo `prazo-em-campo.zip` (em **Add file → Upload files**) e confirme.
+3. Em [vercel.com/new](https://vercel.com/new), importe esse repositório.
+4. Deixe o framework como Next.js e clique em **Deploy**.
+
+O endereço público aparece no fim do deploy. Abra esse endereço, anexe a planilha de serviços e use **Avisar no WhatsApp**.
+
+## Como rodar neste computador
 
 ```bash
 npm install
 npm run dev
 ```
 
-Abra [http://127.0.0.1:4317](http://127.0.0.1:4317). O servidor precisa continuar ligado: a varredura dos prazos roda a cada 30 segundos dentro dele.
+Abra [http://127.0.0.1:4317](http://127.0.0.1:4317).
 
 ```bash
 npm test

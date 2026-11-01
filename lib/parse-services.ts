@@ -3,22 +3,22 @@ import * as XLSX from "xlsx";
 import { normalizeHeader, parseCoord, parseDelimited, parsePrazo } from "@/lib/domain";
 import type { Service } from "@/lib/types";
 
-export function parseUpload(filename: string, buffer: Buffer): Service[] {
+export function parseUpload(filename: string, buffer: Uint8Array): Service[] {
   const rows = looksLikeXlsx(filename, buffer)
     ? workbookRows(buffer)
-    : parseDelimited(buffer.toString("utf8"));
+    : parseDelimited(new TextDecoder("utf-8").decode(buffer));
   return rowsToServices(rows);
 }
 
-function looksLikeXlsx(filename: string, buffer: Buffer): boolean {
+function looksLikeXlsx(filename: string, buffer: Uint8Array): boolean {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return true;
   if (lower.endsWith(".csv")) return false;
   return buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b;
 }
 
-function workbookRows(buffer: Buffer): string[][] {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
+function workbookRows(buffer: Uint8Array): string[][] {
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
   if (!workbook.SheetNames.length) {
     throw new Error("A planilha não tem abas.");
   }

@@ -41,6 +41,9 @@ import {
   matchAgent,
   urgencyOf,
 } from "@/lib/domain";
+import { SHEET_EDIT_URL } from "@/lib/config";
+import { parseUpload } from "@/lib/parse-services";
+import { loadSavedServices, saveSavedServices } from "@/lib/saved-services";
 import type { Alert, PhoneEntry, Service, Urgency } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -142,16 +145,42 @@ export function Dashboard() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/state", { cache: "no-store" });
-    if (!response.ok) throw new Error("Não foi possível carregar o acompanhamento.");
-    setData((await response.json()) as StatePayload);
+    const saved = loadSavedServices();
+    const response = await fetch("/api/phones", { cache: "no-store" });
+    const payload = (await response.json()) as {
+      phones?: PhoneEntry[];
+      phonesFetchedAt?: string | null;
+      phonesError?: string | null;
+      error?: string;
+    };
+    if (!response.ok && !payload.phones) {
+      throw new Error(payload.error || payload.phonesError || "Não foi possível carregar os telefones.");
+    }
+    setData({
+      now: new Date().toISOString(),
+      fileName: saved.fileName,
+      uploadedAt: saved.uploadedAt,
+      services: saved.services,
+      alerts: [],
+      phones: payload.phones ?? [],
+      phonesFetchedAt: payload.phonesFetchedAt ?? null,
+      phonesError: payload.phonesError ?? null,
+      lastCheckAt: new Date().toISOString(),
+      lastCheckError: null,
+      sheetUrl: SHEET_EDIT_URL,
+      settings: {
+        extraOwnerPhone: "",
+        provider: "none",
+        metaPhoneNumberId: "",
+        webhookUrl: "",
+        hasMetaToken: false,
+        hasWebhookToken: false,
+        activeProvider: "none",
+        activeSource: "nenhuma",
+      },
+    });
     setLoadError(null);
   }, []);
-
-  const check = useCallback(async () => {
-    await fetch("/api/alerts/check", { method: "POST" }).catch(() => undefined);
-    await load();
-  }, [load]);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,35 +194,28 @@ export function Dashboard() {
       } finally {
         if (!cancelled) setLoading(false);
       }
-      if (cancelled) return;
-      try {
-        await check();
-      } catch (error) {
-        if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "Falha ao atualizar.");
-        }
-      }
     })();
     const poll = setInterval(() => {
-      void check().catch((error) => {
+      void load().catch((error) => {
         setLoadError(error instanceof Error ? error.message : "Falha ao atualizar.");
       });
-    }, 30_000);
+    }, 120_000);
     return () => {
       cancelled = true;
       clearInterval(poll);
     };
-  }, [check, load]);
+  }, [load]);
 
   async function upload(file: File) {
-    const body = new FormData();
-    body.set("file", file);
     setUploading(true);
     try {
-      const response = await fetch("/api/upload", { method: "POST", body });
-      const payload = (await response.json()) as { error?: string; count?: number };
-      if (!response.ok) throw new Error(payload.error || "Não foi possível ler o arquivo.");
-      toast.success(`${payload.count} serviços carregados.`);
+      const services = parseUpload(file.name, new Uint8Array(await file.arrayBuffer()));
+      saveSavedServices({
+        fileName: file.name,
+        uploadedAt: new Date().toISOString(),
+        services,
+      });
+      toast.success(`${services.length} serviços carregados.`);
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível ler o arquivo.");
@@ -360,7 +382,7 @@ export function Dashboard() {
               <CardDescription>{loadError}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button type="button" onClick={() => void check()}>
+              <Button type="button" onClick={() => void load()}>
                 Tentar de novo
               </Button>
             </CardContent>
@@ -420,11 +442,13 @@ export function Dashboard() {
                   size="sm"
                   onClick={() => {
                     void (async () => {
-                      const response = await fetch("/api/phones/refresh", { method: "POST" });
-                      const payload = (await response.json()) as { error?: string };
+                      const response = await fetch("/api/phones", { cache: "no-store" });
+                      const payload = (await response.json()) as { error?: string; phonesError?: string };
                       await load();
                       if (!response.ok) {
-                        throw new Error(payload.error || "Não foi possível atualizar os telefones.");
+                        throw new Error(
+                          payload.phonesError || payload.error || "Não foi possível atualizar os telefones.",
+                        );
                       }
                       toast.success("Telefones atualizados.");
                     })().catch((error) => {
