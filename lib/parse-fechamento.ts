@@ -6,6 +6,7 @@ export type FechamentoItem = {
   codigoTdc: string;
   prazoIso: string;
   fimIso: string;
+  chefe: string;
   fora: boolean;
 };
 
@@ -59,16 +60,22 @@ export function parseFechamento(filename: string, buffer: Uint8Array): Fechament
   let dentro = 0;
   let semDataFim = 0;
   const itens: FechamentoItem[] = [];
-  for (const [codigoTdc, prazoIso] of prazos) {
-    const fimIso = fins.get(codigoTdc);
-    if (!fimIso) {
+  for (const [codigoTdc, prazo] of prazos) {
+    const fim = fins.get(codigoTdc);
+    if (!fim) {
       semDataFim += 1;
       continue;
     }
-    const late = fimIso > prazoIso;
+    const late = fim.fimIso > prazo.prazoIso;
     if (late) fora += 1;
     else dentro += 1;
-    itens.push({ codigoTdc, prazoIso, fimIso, fora: late });
+    itens.push({
+      codigoTdc,
+      prazoIso: prazo.prazoIso,
+      fimIso: fim.fimIso,
+      chefe: fim.chefe || prazo.chefe,
+      fora: late,
+    });
   }
 
   itens.sort((a, b) => {
@@ -83,7 +90,7 @@ function sheetName(names: string[], expected: string): string | null {
   return names.find((name) => normalizeHeader(name) === expected) ?? null;
 }
 
-function readPrazos(sheet: XLSX.WorkSheet | undefined): Map<string, string> {
+function readPrazos(sheet: XLSX.WorkSheet | undefined): Map<string, { prazoIso: string; chefe: string }> {
   if (!sheet) throw new Error("A aba TdC está vazia.");
   const found = findHeader(sheet, (headers) => {
     return (
@@ -96,17 +103,18 @@ function readPrazos(sheet: XLSX.WorkSheet | undefined): Map<string, string> {
   }
   const codigoCol = found.headers.findIndex((header) => header.includes("codigo tdc"));
   const prazoCol = found.headers.findIndex((header) => header.includes("prazo ans legal"));
-  const prazos = new Map<string, string>();
+  const chefeCol = chefeColumn(found.headers);
+  const prazos = new Map<string, { prazoIso: string; chefe: string }>();
   eachDataRow(sheet, found, (row) => {
     const codigo = codeAt(sheet, row, found.startCol + codigoCol);
     const prazoIso = dateAt(sheet, row, found.startCol + prazoCol);
     if (!codigo || !prazoIso || prazos.has(codigo)) return;
-    prazos.set(codigo, prazoIso);
+    prazos.set(codigo, { prazoIso, chefe: chefeCol < 0 ? "" : textAt(sheet, row, found.startCol + chefeCol) });
   });
   return prazos;
 }
 
-function readFins(sheet: XLSX.WorkSheet | undefined): Map<string, string> {
+function readFins(sheet: XLSX.WorkSheet | undefined): Map<string, { fimIso: string; chefe: string }> {
   if (!sheet) throw new Error("A aba Linhas TdC está vazia.");
   const found = findHeader(sheet, (headers) => {
     const hasCode = headers.some((header) => header === "tdc" || header === "codigo tdc");
@@ -120,15 +128,27 @@ function readFins(sheet: XLSX.WorkSheet | undefined): Map<string, string> {
   if (codeCol < 0) codeCol = found.headers.findIndex((header) => header === "codigo tdc");
   let fimCol = found.headers.findIndex((header) => header === "data fim");
   if (fimCol < 0) fimCol = found.headers.findIndex((header) => header.includes("data fim"));
-  const fins = new Map<string, string>();
+  const chefeCol = chefeColumn(found.headers);
+  const fins = new Map<string, { fimIso: string; chefe: string }>();
   eachDataRow(sheet, found, (row) => {
     const codigo = codeAt(sheet, row, found.startCol + codeCol);
     const fimIso = dateAt(sheet, row, found.startCol + fimCol);
     if (!codigo || !fimIso) return;
     const current = fins.get(codigo);
-    if (!current || fimIso > current) fins.set(codigo, fimIso);
+    if (!current || fimIso > current.fimIso) {
+      fins.set(codigo, {
+        fimIso,
+        chefe: chefeCol < 0 ? "" : textAt(sheet, row, found.startCol + chefeCol),
+      });
+    }
   });
   return fins;
+}
+
+function chefeColumn(headers: string[]): number {
+  return headers.findIndex(
+    (header) => header.includes("chefe") || header.includes("responsavel de equipe"),
+  );
 }
 
 type HeaderHit = { row: number; startCol: number; headers: string[]; endRow: number };

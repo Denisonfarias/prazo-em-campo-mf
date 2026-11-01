@@ -16,7 +16,7 @@ function workbook(): Uint8Array {
   const linhas = XLSX.utils.aoa_to_sheet([
     ["Chefe/Responsável de Equipe", "TdC", "Data Inicio", "Data Fim"],
     ["Equipe A", "100", "02/10/2026 10:00", "02/10/2026 11:00"],
-    ["Equipe A", "100", "02/10/2026 11:30", "02/10/2026 13:00"],
+    ["Equipe Z", "100", "02/10/2026 11:30", "02/10/2026 13:00"],
     ["Equipe B", "200", "02/10/2026 16:00", "02/10/2026 18:00"],
     ["Equipe C", "300", "03/10/2026 08:00", ""],
     ["Equipe D", "999", "04/10/2026 08:00", "04/10/2026 12:00"],
@@ -35,7 +35,9 @@ test("cruza Data Fim com Prazo ANS Legal e usa a baixa mais recente", () => {
   const late = result.itens.find((item) => item.codigoTdc === "100");
   const onTime = result.itens.find((item) => item.codigoTdc === "200");
   assert.equal(late?.fora, true);
+  assert.equal(late?.chefe, "Equipe Z");
   assert.equal(onTime?.fora, false);
+  assert.equal(onTime?.chefe, "Equipe B");
   assert.equal(
     result.itens.some((item) => item.codigoTdc === "300" || item.codigoTdc === "999"),
     false,

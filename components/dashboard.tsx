@@ -356,7 +356,9 @@ export function Dashboard() {
     const itens = fechamento?.itens.filter((item) => item.fora) ?? [];
     const term = query.trim().toLocaleLowerCase("pt-BR");
     if (!term) return itens;
-    return itens.filter((item) => item.codigoTdc.toLocaleLowerCase("pt-BR").includes(term));
+    return itens.filter((item) =>
+      `${item.codigoTdc} ${item.chefe ?? ""}`.toLocaleLowerCase("pt-BR").includes(term),
+    );
   }, [fechamento, query]);
   const foraPages = Math.max(1, Math.ceil(foraItens.length / 40));
   const foraPageSafe = Math.min(foraPage, foraPages - 1);
@@ -1170,6 +1172,7 @@ function FechamentoList({
         <TableHeader>
           <TableRow>
             <TableHead>Código TdC</TableHead>
+            <TableHead>Responsável</TableHead>
             <TableHead>Prazo ANS legal</TableHead>
             <TableHead>Data fim</TableHead>
             <TableHead>Situação</TableHead>
@@ -1179,6 +1182,7 @@ function FechamentoList({
           {itens.map((item) => (
             <TableRow key={item.codigoTdc} className="bg-purple-50 hover:bg-purple-100">
               <TableCell className="font-medium tabular-nums">{item.codigoTdc}</TableCell>
+              <TableCell className="whitespace-normal">{item.chefe || "—"}</TableCell>
               <TableCell>{formatPrazo(item.prazoIso)}</TableCell>
               <TableCell>{formatPrazo(item.fimIso)}</TableCell>
               <TableCell>
