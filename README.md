@@ -6,12 +6,26 @@ A lista de serviços fica salva neste navegador. Os telefones são lidos da plan
 
 ## Colocar no ar pelo GitHub
 
-1. Crie um repositório vazio no GitHub.
-2. Envie o arquivo `prazo-em-campo.zip` (em **Add file → Upload files**) e confirme.
-3. Em [vercel.com/new](https://vercel.com/new), importe esse repositório.
-4. Deixe o framework como Next.js e clique em **Deploy**.
+O GitHub não descompacta um zip enviado por **Add file**. Extraia a pasta primeiro.
 
-O endereço público aparece no fim do deploy. Abra esse endereço, anexe a planilha de serviços e use **Avisar no WhatsApp**.
+1. Baixe `prazo_em_campo_github.zip` nesta conversa.
+2. Clique com o botão direito no arquivo e escolha **Extrair**.
+3. Em [github.com/new](https://github.com/new), crie um repositório vazio. Não marque a opção de criar README.
+4. No seu computador, abra o terminal dentro da pasta extraída e envie os arquivos. Troque o endereço pelo do repositório que você criou:
+
+```bash
+git init
+git add .
+git commit -m "Prazo em campo"
+git branch -M main
+git remote add origin https://github.com/SEU_USUARIO/prazo-em-campo.git
+git push -u origin main
+```
+
+5. Em [vercel.com/new](https://vercel.com/new), importe esse repositório.
+6. Deixe o framework como Next.js e clique em **Deploy**.
+
+O endereço público aparece no fim do deploy. Abra esse endereço, anexe a planilha de serviços e use **Avisar no WhatsApp**. O link de visualização desta conversa não substitui esse endereço: nele os botões do navegador podem não responder.
 
 ## Como rodar neste computador
 

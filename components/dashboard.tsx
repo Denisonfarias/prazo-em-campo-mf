@@ -395,15 +395,16 @@ export function Dashboard() {
               </span>
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
+              <label
+                htmlFor="planilha"
+                className={cn(
+                  buttonVariants({ variant: "secondary" }),
+                  uploading && "pointer-events-none opacity-50",
+                )}
               >
                 <Upload data-icon="inline-start" />
                 {uploading ? "Lendo arquivo..." : "Anexar planilha"}
-              </Button>
+              </label>
               <Button
                 type="button"
                 variant="secondary"
@@ -421,10 +422,12 @@ export function Dashboard() {
       </header>
 
       <input
+        id="planilha"
         ref={fileRef}
         type="file"
         accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        className="hidden"
+        className="sr-only"
+        disabled={uploading}
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) void upload(file);
@@ -708,10 +711,9 @@ export function Dashboard() {
             </CardContent>
           </Card>
         ) : services.length === 0 ? (
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="rounded-2xl border-2 border-dashed border-border bg-card px-6 py-16 text-center"
+          <label
+            htmlFor="planilha"
+            className="cursor-pointer rounded-2xl border-2 border-dashed border-border bg-card px-6 py-16 text-center"
           >
             <Upload className="mx-auto size-8 text-primary" />
             <p className="mt-3 font-heading text-2xl">Anexe a planilha de serviços</p>
@@ -719,7 +721,7 @@ export function Dashboard() {
               Aceita .xlsx e .csv. O sistema lê o código do TdC, o responsável, o endereço, o
               cliente e o Prazo ANS legal.
             </p>
-          </button>
+          </label>
         ) : rows.length === 0 ? (
           <Card>
             <CardHeader>
